@@ -1,21 +1,18 @@
 {
-    //webserver
     "listen_address": "0.0.0.0",
     "http_port": 8080,
     "https_port": 8443,
 
-    //ssl
-    "cert_path": "path/to/cert.pem",
-    "key_path": "path/to/key.pem",
+    "http_redirection": true,
 
-    //redis
+    "cert_path": "config/cert.pem",
+    "key_path": "config/key.pem",
+
     "redis_server": "redis://127.0.0.1/",
 
-    //database
     "db_path": "path/to/db",
     "db_name": "db_name",
 
-    //debug
-    "debug_level": "debug",
+    "debug_level": "info",
     "debug_log_path": "debug.log"
 }

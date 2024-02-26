@@ -1,120 +1,124 @@
-use axum::{extract, response::Json};
+//use axum::{handler::get, handler::post, Router, response::IntoResponse, http::StatusCode, routing::fallthrough};
+use axum::{
+    extract::Host,
+    routing::{get, post},
+    http::StatusCode,
+    response::{IntoResponse, Redirect},
+    Router,
+    BoxError,
+};
+
+pub async fn root_handler() -> impl IntoResponse {
+    (StatusCode::OK, "Hellow World!").into_response()
+}
+
+pub async fn status_handler() -> impl IntoResponse {
+    (StatusCode::OK, "Service is running").into_response()
+}
+
+pub async fn login_handler() -> impl IntoResponse {
+    (StatusCode::OK, "Login Page").into_response()
+}
+
+pub async fn logout_handler() -> impl IntoResponse {
+    (StatusCode::OK, "Logout Page").into_response()
+}
+
+pub async fn not_found() -> impl IntoResponse {
+    (StatusCode::NOT_FOUND, "404, Not Found").into_response()
+}
+
+/* fn log_request(request: &Request<Body>) {
+    let method = request.method();
+    let uri = request.uri();
+    let headers = request.headers();
+
+    tracing::info!(
+        method = ?method,
+        uri = ?uri,
+        headers = ?headers,
+        "Received a request"
+    );
+} */
+
+
+
+/* use axum::{extract, Json, Router, routing::post, response::IntoResponse};
 use serde::{Deserialize, Serialize};
-use rusqlite::{params, Connection, Error as SqliteError};
-use bcrypt::{hash, verify};
-use jsonwebtoken::{encode, Header, EncodingKey};  // Assuming you are using the 'jsonwebtoken' crate for JWT handling
+use std::sync::Arc;
+use tokio::sync::Mutex;
+use std::collections::HashMap;
+use jsonwebtoken::{encode, EncodingKey, Header, decode, DecodingKey, Validation};
+use axum::http::StatusCode;
+use axum::response::Json as AxumJson;
 
-use crate::database::{init_db, DbError, DB_PATH};
-
-// Dummy structs to represent request and response. Modify as needed.
-#[derive(Deserialize)]
-pub struct StoreSecretRequest {
-    secret: String,
+#[derive(Debug, Serialize, Deserialize)]
+struct Claims {
+    sub: String,
+    exp: usize,
 }
 
-#[derive(Serialize)]
-pub struct StoreSecretResponse {
-    message: String,
-    secret_id: String,
-}
-
-#[derive(Deserialize)]
-pub struct RetrieveSecretRequest {
-    secret_id: String,
-}
-
-#[derive(Serialize)]
-pub struct RetrieveSecretResponse {
-    secret: String,
-}
-
-#[derive(Deserialize)]
-pub struct SignupRequest {
+#[derive(Debug, Deserialize)]
+struct LoginRequest {
     username: String,
     password: String,
 }
 
-#[derive(Serialize)]
-pub struct SignupResponse {
-    message: String,
-}
-
-#[derive(Deserialize)]
-pub struct LoginRequest {
-    username: String,
-    password: String,
-}
-
-#[derive(Serialize)]
-pub struct LoginResponse {
+#[derive(Debug, Serialize)]
+struct LoginResponse {
     token: String,
 }
 
-// Handler to store secret
-pub async fn store_secret(extract::Json(body): extract::Json<StoreSecretRequest>) -> Json<StoreSecretResponse> {
-    // Logic to store the secret goes here
+type Db = Arc<Mutex<HashMap<String, String>>>;
 
-    let response = StoreSecretResponse {
-        message: "Secret stored successfully".into(),
-        secret_id: "random_id".into(),
-    };
-
-    Json(response)
-}
-
-// Handler to retrieve secret
-pub async fn retrieve_secret(extract::Json(body): extract::Json<RetrieveSecretRequest>) -> Json<RetrieveSecretResponse> {
-    // Logic to retrieve the secret goes here
-
-    let response = RetrieveSecretResponse {
-        secret: "sample_secret".into(),
-    };
-
-    Json(response)
-}
-
-// Handler to signup users
-pub async fn signup(extract::Json(body): extract::Json<SignupRequest>) -> Json<SignupResponse> {
-    let hashed_password = hash(&body.password, 4).unwrap();
-
-    let conn = Connection::open(DB_PATH).unwrap();
-    match conn.execute(
-        "INSERT INTO users (username, password) VALUES (?1, ?2)",
-        params![&body.username, &hashed_password],
-    ) {
-        Ok(_) => Json(SignupResponse {
-            message: "User signed up successfully".into(),
-        }),
-        Err(_) => Json(SignupResponse {
-            message: "Signup failed".into(),
-        }),
-    }
-}
-
-// Handler to login users and return JWT
-pub async fn login(extract::Json(body): extract::Json<LoginRequest>) -> Json<LoginResponse> {
-    let conn = Connection::open(DB_PATH).unwrap();
-    let mut stmt = conn.prepare("SELECT password FROM users WHERE username = ?1").unwrap();
-    let stored_password: Result<String> = stmt.query_row(params![&body.username], |row| row.get(0));
-
-    match stored_password {
-        Ok(hashed_password) if verify(&body.password, &hashed_password).unwrap() => {
+async fn login(
+    Json(payload): Json<LoginRequest>,
+    db: extract::Extension<Db>,
+) -> impl IntoResponse {
+    let message = if let Some(password) = db.lock().await.get(&payload.username) {
+        if password == &payload.password {
             let claims = Claims {
-                sub: body.username.clone(),
-                exp: (chrono::Utc::now() + chrono::Duration::hours(1)).timestamp() as usize,
+                sub: payload.username.clone(),
+                exp: (chrono::Utc::now() + chrono::Duration::hours(2)).timestamp() as usize, //make duration configurable
             };
-
-            let token = encode(&Header::default(), &claims, &EncodingKey::from_secret("secret_key".as_ref())).unwrap();
-
-            Json(LoginResponse {
-                token,
-            })
+            let token = encode(&Header::default(), &claims, &EncodingKey::from_secret("secret".as_ref())).unwrap();
+            return AxumJson(LoginResponse { token }).into_response();
+        } else {
+            "Invalid password".into()
         }
-        _ => Json(LoginResponse {
-            token: "Invalid credentials".into(),
-        }),
+    } else {
+        "Invalid username".into()
+    };
+    (StatusCode::UNAUTHORIZED, message).into_response()
+}
+
+async fn protected_route(
+    extract::Extension(db): extract::Extension<Db>,
+    extract::Header(header): extract::Header<Option<String>>,
+) -> impl IntoResponse {
+    let token = match header {
+        Some(token) => token,
+        None => return (StatusCode::UNAUTHORIZED, "No token provided").into_response(),
+    };
+
+    let token_data = decode::<Claims>(&token, &DecodingKey::from_secret("secret".as_ref()), &Validation::default());
+    match token_data {
+        Ok(data) => {
+            let username = data.claims.sub;
+            if db.lock().await.contains_key(&username) {
+                (StatusCode::OK, "You are authenticated").into_response()
+            } else {
+                (StatusCode::UNAUTHORIZED, "Invalid token").into_response()
+            }
+        }
+        Err(_) => (StatusCode::UNAUTHORIZED, "Invalid token").into_response(),
     }
 }
 
-// Handler to verify JWT
-
+pub fn router() -> Router {
+    let db = Db::default();
+    Router::new()
+        .route("/login", post(login))
+        .route("/protected", post(protected_route))
+        .layer(axum::AddExtensionLayer::new(db))
+} */

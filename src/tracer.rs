@@ -1,4 +1,4 @@
-use std::sync::Arc;
+/* use std::sync::Arc;
 use std::fs::File;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::fmt;
@@ -32,3 +32,4 @@ pub fn init_tracing(debug_log_path: &str) {
         )
         .init();
 }
+ */

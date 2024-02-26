@@ -1,4 +1,4 @@
-use rusqlite::{Connection, Error as SqliteError};
+/* use rusqlite::{Connection, Error as SqliteError};
 use std::convert::From;
 
 #[derive(Debug)]
@@ -27,3 +27,4 @@ pub fn init_db() -> Result<(), DbError> {
 
     Ok(())
 }
+ */
