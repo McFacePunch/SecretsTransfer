@@ -173,7 +173,6 @@ async fn main() {
         //.layer(Extension(config.debug_requests))
         .layer(middleware::from_fn(custom_middleware::print_request_response))//;
         .layer(Extension(config.debug_requests));
-        .layer(HandleErrorLayer::new(custom_middleware::handle_error))
 
         //.route("/signup", post(api::signup))
         //.route("/retrieve_secret", get(api::retrieve_secret))
