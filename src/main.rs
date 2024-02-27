@@ -2,6 +2,8 @@
 // graceful shutdown? https://github.com/tokio-rs/axum/blob/main/examples/tls-graceful-shutdown/src/main.rs
 // client tls? https://cloud.tencent.com/developer/article/1900692
 
+// TODO: Consider feature flags?
+
 
 #![allow(unused_imports)]
 
@@ -15,6 +17,10 @@ use axum::{
     BoxError, Router,
 };
 use axum::{ response::IntoResponse,};
+use axum::middleware::from_fn;
+use axum::middleware;
+use axum::error_handling::HandleErrorLayer;
+use axum::Extension;
 
 use axum_server::tls_rustls::RustlsConfig;
 
@@ -24,22 +30,29 @@ use rustls::{
     CipherSuite, RootCertStore, SupportedCipherSuite,
 };
 
+use tower::ServiceBuilder;
+use tokio::time::error;
+//use tower_http::{add_extension::AddExtensionLayer, trace::TraceLayer};
+
 use serde::{Deserialize, Deserializer};
 
 use clap::Parser;
 
-use std::{net::SocketAddr, path::PathBuf, str::FromStr, sync::Arc};
+use std::{net::SocketAddr, net::IpAddr, path::PathBuf, str::FromStr, sync::Arc};
 use std::fs;
 use std::io;
+use std::time::Duration;
 
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use tracing_subscriber::fmt;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::filter::LevelFilter;
+use tracing::{debug, error, info};
 
 use std::convert::TryFrom;
 use std::fs::File;
 use std::io::BufReader;
+
 use tokio::net::{TcpStream};
 use tokio_rustls::{
     TlsAcceptor,
@@ -47,11 +60,13 @@ use tokio_rustls::{
     rustls::{self},
     client::TlsStream as ClientTlsStream,
 };
+use tokio::net::TcpListener; 
 
 mod other;
 use other::ascii_art;
 
 mod api;
+mod custom_middleware;
 //use api; //::{login_handler, logout_handler, status_handler, not_found};
 
 //use axum::prelude::*;
@@ -80,6 +95,7 @@ struct Config {
 
     //debug
     debug_level: String,
+    debug_requests: bool,
     debug_log_path: String,
 }
 
@@ -136,15 +152,29 @@ async fn main() {
     let cert_path_buf = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(config.cert_path);
     let key_path_buf = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(config.key_path);
 
-    tracing::info!("Using certificate: {:?}", cert_path_buf);
-    tracing::info!("Using private key: {:?}", key_path_buf);
+    tracing::info!("Using certificate at: {:?}", cert_path_buf);
+    tracing::info!("Using private key at: {:?}", key_path_buf);
 
     let webserver = Router::new()
+        //.layer(Extension(config.debug_requests))
+        //.layer(middleware::from_fn(custom_middleware::print_request_response))
         .route("/", get(api::root_handler))
         .route("/status", get(api::status_handler))
-        .route("/login", post(api::login_handler))
-        .route("/logout", post(api::logout_handler))
-        .route("/:any", get(api::not_found));
+        .route("/create_secret_url", get(api::create_secret_url) )
+        //.route("/retrieve_secret_url", get(api::retrieve_secret_url) )
+        //.route("/secret/:id", get(api::retrieve_secret) ) // todo use more CRUD
+        .route("/headers", get(api::header_handler))
+        .route("/connection", get(api::connection_handler))
+
+        //.route("/login", post(api::login_handler))
+        //.route("/logout", post(api::logout_handler))
+        .route("/:any", get(api::not_found))//;
+        //
+        //.layer(Extension(config.debug_requests))
+        .layer(middleware::from_fn(custom_middleware::print_request_response))//;
+        .layer(Extension(config.debug_requests));
+        .layer(HandleErrorLayer::new(custom_middleware::handle_error))
+
         //.route("/signup", post(api::signup))
         //.route("/retrieve_secret", get(api::retrieve_secret))
         //.route("/store_secret", post(api::store_secret));
@@ -152,19 +182,12 @@ async fn main() {
         //    .route("/status", get(api::status_handler))
 
     let tls_config = RustlsConfig::from_pem_file(cert_path_buf, key_path_buf).await.unwrap();
-        // Specify accepted ciphers
-    
-/*     tls_config.ciphersuites = vec![
-        &rustls::ciphersuite::TLS13_AES_256_GCM_SHA384,
-        &rustls::ciphersuite::TLS13_CHACHA20_POLY1305_SHA256,
-        // Add more ciphers here
-    ]; */
 
     // run https server
     let addr = SocketAddr::from(([127, 0, 0, 1], ports.https));
     tracing::info!("listening on {}", addr);
     axum_server::bind_rustls(addr, tls_config)
-        .serve(webserver.into_make_service())
+        .serve(webserver.into_make_service_with_connect_info::<SocketAddr>())//.into_make_service())
         .await
         .unwrap();
 }
@@ -210,69 +233,7 @@ fn setup_logging(config: &Config) {
     tracing::info!("Logging initialized");
 }
 
-
-
-/* 
-
-
-pub fn load_certs(filename: &str) -> Vec<rustls::Certificate> {
-    let certfile = File::open(filename).expect("cannot open certificate file");
-    let mut reader = BufReader::new(certfile);
-    rustls_pemfile::certs(&mut reader)
-        .unwrap()
-        .iter()
-        .map(|v| rustls::Certificate(v.clone()))
-        .collect()
-}
-
-pub fn load_private_key(filename: &str) -> rustls::PrivateKey {
-    let keyfile = File::open(filename).expect("cannot open private key file");
-    let mut reader = BufReader::new(keyfile);
-
-    loop {
-        match rustls_pemfile::read_one(&mut reader).expect("cannot parse private key .pem file") {
-            Some(Item::RSAKey(key)) => return rustls::PrivateKey(key),
-            Some(Item::PKCS8Key(key)) => return rustls::PrivateKey(key),
-            None => break,
-            _ => {}
-        }
-    }
-
-    panic!(
-        "no keys found in {:?} (encrypted keys not supported)",
-        filename
-    );
-}
-
-
-
-fn make_server_config(certs: &str, key_file: &str) -> Arc<rustls::ServerConfig> {
-    let roots = load_certs(certs);
-    let certs = roots.clone();
-    let mut client_auth_roots = RootCertStore::empty();
-    for root in roots {
-        client_auth_roots.add(&root).unwrap();
-    }
-    let client_auth = AllowAnyAuthenticatedClient::new(client_auth_roots);
-
-    let privkey = load_private_key(key_file);
-    let suites = rustls::ALL_CIPHER_SUITES.to_vec();
-    let versions = rustls::ALL_VERSIONS.to_vec();
-
-    let mut config = rustls::ServerConfig::builder()
-        .with_cipher_suites(&suites)
-        .with_safe_default_kx_groups()
-        .with_protocol_versions(&versions)
-        .expect("inconsistent cipher-suites/versions specified")
-        .with_client_cert_verifier(client_auth)
-        .with_single_cert_with_ocsp_and_sct(certs, privkey, vec![], vec![])
-        .expect("bad certificates/private key");
-
-    config.key_log = Arc::new(rustls::KeyLogFile::new());
-    config.session_storage = rustls::server::ServerSessionMemoryCache::new(256);
-    Arc::new(config)
-}
- */
+// Redirect HTTP to HTTPS
 #[allow(dead_code)]
 async fn redirect_http_to_https(ports: Ports) {
     fn make_https(host: String, uri: Uri, ports: Ports) -> Result<Uri, BoxError> {
