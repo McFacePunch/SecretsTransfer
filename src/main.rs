@@ -63,6 +63,7 @@ use tokio_rustls::{
 use tokio::net::TcpListener; 
 
 mod other;
+use other::print_secrets_transfer_with_lock_ascii;
 use other::ascii_art;
 
 mod api;
@@ -119,6 +120,7 @@ async fn main() {
     let args = Args::parse(); // Parse command line arguments
 
     ascii_art(); // eh why not?
+    other::print_secrets_transfer_with_lock_ascii(); // eh why not?
 
     // Load the configuration file
     if args.config.is_empty() {
@@ -168,11 +170,20 @@ async fn main() {
 
         //.route("/login", post(api::login_handler))
         //.route("/logout", post(api::logout_handler))
-        .route("/:any", get(api::not_found))//;
+
+        // fault injection to test middleware later
+        //.route("/trigger_error", get(trigger_error))
+        
+        // catch all urls that don't match existing routes
+        .route("/*any", get(api::not_found))//;
         //
         //.layer(Extension(config.debug_requests))
         .layer(middleware::from_fn(custom_middleware::print_request_response))//;
         .layer(Extension(config.debug_requests));
+        
+
+        //.layer(HandleErrorLayer::new(custom_middleware::handle_error));
+        //.layer(HandleErrorLayer::new(custom_middleware::handle_timeout_error));
 
         //.route("/signup", post(api::signup))
         //.route("/retrieve_secret", get(api::retrieve_secret))

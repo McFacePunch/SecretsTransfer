@@ -10,17 +10,32 @@ use axum::{
 use axum::extract::Extension;
 use axum::extract::ConnectInfo;
 use axum::extract::FromRequest;
+//use axum::Error;
+
+use tower::{BoxError, Service, ServiceExt};
+use tower::ServiceBuilder;
+
+use axum::http::header::HeaderMap;
+
+
 
 use http_body_util::BodyExt;
-use std::net::SocketAddr;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+
+use std::{future, net::SocketAddr, task::Poll};
+use std::error::Error;
+
+use tracing_subscriber::{layer::{Context, SubscriberExt}, util::SubscriberInitExt};
 
 
+struct CatchAllErrorMiddleware;
 
-pub async fn print_request_response(Extension(debug_mode): Extension<bool>, ConnectInfo(remote_addr): ConnectInfo<SocketAddr>, req: Request, next: Next) -> Result<impl IntoResponse, (StatusCode, String)> {
+
+pub async fn print_request_response(Extension(debug_requests): Extension<bool>,
+ ConnectInfo(remote_addr): ConnectInfo<SocketAddr>,
+  req: Request, next: Next) -> Result<impl IntoResponse, (StatusCode, String)> {
     // TODO pass request into buffer_and_print for logging
 
-    if debug_mode {
+    if debug_requests {
         let method = req.method().clone();
         let uri = req.uri().clone();
         let headers = req.headers().clone();
@@ -74,31 +89,89 @@ where
     Ok(bytes)
 }
 
-/*pub async fn log_request(
-    ConnectInfo(remote_addr): ConnectInfo<SocketAddr>,
-    request: Request<Body>,
-    next: Next, 
-) -> Result<Response<Body>, BoxError> {
 
-    // Extract the information
-    let method = request.method().clone();
-    let uri = request.uri().clone();
-    let headers = request.headers().clone();
 
-    // Use `tracing` for structured logging
-    info!(
+//pub async fn handle_timeout_error(err: BoxError,) -> (StatusCode, String) {
+pub async fn handle_timeout_error(err: Box<dyn std::error::Error + Send + Sync + 'static>) -> (StatusCode, String) {
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        format!("Failed with {err}"),
+    )
+}
+
+
+pub async fn handle_error(err: BoxError, Extension(debug_requests): Extension<bool>,  ConnectInfo(remote_addr): ConnectInfo<SocketAddr>, req: Request, next: Next) -> Result<Response<Body>, BoxError> {
+    // Log the error and option verbose logging under debug mode
+    tracing::error!("Error: {}.", err);// Caused by: {}", err, err.source().unwrap_or_default);
+    let mut response;
+
+    if debug_requests {
+        // debug mode so return full info
+        response = Response::builder()
+            .status(StatusCode::INTERNAL_SERVER_ERROR)
+            .body(Body::from("Internal Server Error"))
+            .unwrap();
+    } else {
+        // return a "404 Not Found" and log the actual error
+        // mimic this: (StatusCode::NOT_FOUND, "404, Not Found")
+        response = Response::builder()
+            .status(StatusCode::NOT_FOUND)
+            .body(Body::from("404, Not Found"))
+            .unwrap();
+    }
+
+    let method = req.method().clone();
+    let uri = req.uri().clone();
+    let headers = req.headers().clone();
+
+    let (parts, body) = req.into_parts();
+    let bytes = buffer_and_print("request", body).await;
+    let bytes = match bytes {
+        Ok(bytes) => bytes,
+        Err((status, message)) => {
+            // Handle the error here
+            // For example, you can log the error and return an empty response
+            tracing::error!("Error buffering request: {}: {}", status, message);
+            return Ok(Response::new(Body::empty()));
+        }
+    };
+    let req = Request::from_parts(parts, Body::from(bytes));
+
+    tracing::error!(
         method = %method,
         uri = %uri,
         headers = ?headers,
-        remote_address = %remote_addr, 
-        "Received a request"
+        remote_address = %remote_addr,
+        "Request caused an error:\n"
     );
 
-    let response = next.run(request).await;
+    // Return the response
+    let res = next.run(req).await;
+    return Ok(res)
+}
 
-    Ok(response)
+
+/*impl<S> Service<S> for CatchAllErrorMiddleware {
+    type Response = Response;
+    type Error = BoxError; 
+    type Future = future::Ready<Result<Self::Response, Self::Error>>;
+
+    fn poll_ready(&mut self, _cx: &mut Context<'_, MyService>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn call(&mut self, target: S) -> Self::Future {
+        future::ready(target.oneshot(Request::default()).map_err(|err| err.into()))
+    }
+}
+
+// Generic error handling function
+async fn handle_generic_error(_err: Box<dyn Error + Send + Sync + 'static>) -> impl IntoResponse {
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "A generic error occurred".to_string(),
+    )
 }*/
-
 
 
 /*pub async fn auth_middleware(

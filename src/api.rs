@@ -5,16 +5,24 @@
 // TODOL Encrypt secret at rest
 
 use axum::{
+    body::{Body, Bytes},
     extract::Host,
+    extract::Request,
     routing::{get, post},
     http::StatusCode,
-    response::{IntoResponse, Redirect},
+    response::{IntoResponse, Redirect, Response},
     Router,
     BoxError,
 };
 use axum::http::header::HeaderMap;
 use axum::extract::Query;
 use axum::extract::ConnectInfo;
+
+use axum::Error;
+//use std::error::Error;
+
+use http_body_util::BodyExt;
+
 
 use std::net::{IpAddr, SocketAddr};
 use std::fmt::Write; 
@@ -73,10 +81,15 @@ pub async fn header_handler(headers: HeaderMap) -> impl IntoResponse {
     output
 }
 
-
 pub async fn not_found() -> impl IntoResponse {
     (StatusCode::NOT_FOUND, "404, Not Found").into_response()
 }
+
+/* // TODO: implement this to do fault injection and test error handling middleware
+pub async fn trigger_error() -> Result<impl IntoResponse, std::convert::Infallible> {
+    Err("This is a forced error".to_string())
+}*/
+
 
 /* fn log_request(request: &Request<Body>) {
     let method = request.method();

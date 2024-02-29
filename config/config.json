@@ -13,7 +13,7 @@
     "db_path": "path/to/db",
     "db_name": "db_name",
 
-    "debug_level": "debug",
-    "debug_requests": true,
+    "debug_level": "info",
+    "debug_requests": false,
     "debug_log_path": "debug.log"
 }
