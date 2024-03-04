@@ -1,7 +1,7 @@
 use redis::Commands;
 
 
-pub fn check_redis_connection() -> redis::RedisResult<()> {
+/*pub fn check_redis_connection() -> redis::RedisResult<()> {
     // Connect to Redis
     let client = redis::Client::open("redis://127.0.0.1/")?;
     let mut con = client.get_connection()?;
@@ -10,4 +10,4 @@ pub fn check_redis_connection() -> redis::RedisResult<()> {
     let _: () = con.ping()?;
 
     Ok(())
-}
+}*/

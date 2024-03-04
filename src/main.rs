@@ -134,7 +134,7 @@ async fn main() {
 
     setup_logging(&config);
 
-    let redis_status = match redis::check_redis_connection() {
+    /*let redis_status = match redis::check_redis_connection() {
         Ok(_) =>{
             tracing::debug!("Connected to Redis successfully!")
         } 
@@ -142,7 +142,7 @@ async fn main() {
             tracing::debug!("Could not connect to Redis: {}", e);
             panic!("Could not connect to Redis: {}", e)
         }
-    };
+    };*/
 
     //remove this
     tracing::debug!("Redis server: {}", config.redis_server);
@@ -173,7 +173,6 @@ async fn main() {
         .route("/create_secret_url", get(api::create_secret_url) )
         //.route("/retrieve_secret_url", get(api::retrieve_secret_url) )
         //.route("/secret/:id", get(api::retrieve_secret) ) // todo use more CRUD
-
 
         .route("/signup", get(api::signup_get_handler).post(api::signup_post_handler))
         //.route("/login", post(api::login_handler))
