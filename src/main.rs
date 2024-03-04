@@ -38,6 +38,7 @@ use serde::{Deserialize, Deserializer};
 
 use clap::Parser;
 
+use core::panic;
 use std::{net::SocketAddr, net::IpAddr, path::PathBuf, str::FromStr, sync::Arc};
 use std::fs;
 use std::io;
@@ -47,13 +48,13 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use tracing_subscriber::fmt;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::filter::LevelFilter;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, trace};
 
 use std::convert::TryFrom;
 use std::fs::File;
 use std::io::BufReader;
 
-use tokio::net::{TcpStream};
+use tokio::net::TcpStream;
 use tokio_rustls::{
     TlsAcceptor,
     TlsConnector,
@@ -68,6 +69,7 @@ use other::ascii_art;
 
 mod api;
 mod custom_middleware;
+mod redis;
 //use api; //::{login_handler, logout_handler, status_handler, not_found};
 
 //use axum::prelude::*;
@@ -119,13 +121,12 @@ struct Args {
 async fn main() {
     let args = Args::parse(); // Parse command line arguments
 
-    ascii_art(); // eh why not?
-    other::print_secrets_transfer_with_lock_ascii(); // eh why not?
-
     // Load the configuration file
     if args.config.is_empty() {
         panic!("[!] No configuration file provided");
     }
+
+    ascii_art(); // eh why not?
 
     tracing::info!("Using configuration file: {}", args.config);
     let config = load_config(&args.config).unwrap();
@@ -133,11 +134,20 @@ async fn main() {
 
     setup_logging(&config);
 
+    let redis_status = match redis::check_redis_connection() {
+        Ok(_) =>{
+            tracing::debug!("Connected to Redis successfully!")
+        } 
+        Err(e) => {
+            tracing::debug!("Could not connect to Redis: {}", e);
+            panic!("Could not connect to Redis: {}", e)
+        }
+    };
+
     //remove this
     tracing::debug!("Redis server: {}", config.redis_server);
     tracing::debug!("Database path: {}", config.db_path);
     
-
     // configure the ports used by the server, passed to http handler
     let ports = Ports { //todo move to two args vs this setup
         http: config.http_port,
@@ -158,38 +168,29 @@ async fn main() {
     tracing::info!("Using private key at: {:?}", key_path_buf);
 
     let webserver = Router::new()
-        //.layer(Extension(config.debug_requests))
-        //.layer(middleware::from_fn(custom_middleware::print_request_response))
+        .route("/favicon.ico", get(api::favicon))
         .route("/", get(api::root_handler))
-        .route("/status", get(api::status_handler))
         .route("/create_secret_url", get(api::create_secret_url) )
         //.route("/retrieve_secret_url", get(api::retrieve_secret_url) )
         //.route("/secret/:id", get(api::retrieve_secret) ) // todo use more CRUD
-        .route("/headers", get(api::header_handler))
-        .route("/connection", get(api::connection_handler))
 
+
+        .route("/signup", get(api::signup_get_handler).post(api::signup_post_handler))
         //.route("/login", post(api::login_handler))
         //.route("/logout", post(api::logout_handler))
 
+        // Debug Routes
         // fault injection to test middleware later
+        .route("/status", get(api::status_handler))
+        .route("/headers", get(api::header_handler))
+        .route("/connection", get(api::connection_handler))
         //.route("/trigger_error", get(trigger_error))
         
-        // catch all urls that don't match existing routes
+        // catch all handles and layers
         .route("/*any", get(api::not_found))//;
-        //
-        //.layer(Extension(config.debug_requests))
         .layer(middleware::from_fn(custom_middleware::print_request_response))//;
         .layer(Extension(config.debug_requests));
-        
-
         //.layer(HandleErrorLayer::new(custom_middleware::handle_error));
-        //.layer(HandleErrorLayer::new(custom_middleware::handle_timeout_error));
-
-        //.route("/signup", post(api::signup))
-        //.route("/retrieve_secret", get(api::retrieve_secret))
-        //.route("/store_secret", post(api::store_secret));
-        //.nest("/", Router::new()
-        //    .route("/status", get(api::status_handler))
 
     let tls_config = RustlsConfig::from_pem_file(cert_path_buf, key_path_buf).await.unwrap();
 
@@ -244,7 +245,6 @@ fn setup_logging(config: &Config) {
 }
 
 // Redirect HTTP to HTTPS
-#[allow(dead_code)]
 async fn redirect_http_to_https(ports: Ports) {
     fn make_https(host: String, uri: Uri, ports: Ports) -> Result<Uri, BoxError> {
         let mut parts = uri.into_parts();

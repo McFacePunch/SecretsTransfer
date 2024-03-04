@@ -1,0 +1,178 @@
+
+# Service Account for sidecar
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tsunami-manager-sa
+  annotations:
+    eks.amazonaws.com/role-arn: "arn:aws:iam::258193713417:role/eksctl-tsunami-cluster-addon-iamserviceaccoun-Role1-vltL5IuJ1Ndd" # TODO Update
+  namespace: default
+
+
+
+
+
+
+
+---
+# Deployment for web application container
+apiVersion: apps/v1 
+kind: Deployment
+metadata:
+  name: application-container-deployment
+spec:
+  replicas: 2 # Scale as needed
+  selector:
+    matchLabels:
+      app: application-container
+  template:
+    metadata:
+      labels:
+        app: application-container
+    spec:
+      serviceAccountName: application-container-sa
+      containers:
+      - name: runner
+        image: 258193713417.dkr.ecr.eu-north-1.amazonaws.com/tsunami-runner:latest # TODO Update
+        env:
+        - name: WEBSERVICE_SERVICE_HOST
+          value: web-application-service.default.svc.cluster.local
+        - name: WEBSERVICE_SERVICE_PORT
+          value: "8080"
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 200m
+            memory: 256Mi
+---
+# service definition for web application container
+apiVersion: v1
+kind: Service
+metadata:
+  name: application-container-service
+spec:
+  selector:
+    app: application-container
+  ports:
+    - port: 80
+      targetPort: 80
+      nodePort: 8080  
+    - port: 443
+      targetPort: 443
+      nodePort: 8443 
+  type: LoadBalancer 
+
+
+
+
+
+
+
+
+
+
+
+---
+# Deployment definition for  redis
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tsunami-manager
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tsunami-manager
+  template:
+    metadata:
+      labels:
+        app: tsunami-manager
+    spec:
+      serviceAccountName: tsunami-manager-sa
+      containers:
+      - name: runner
+        image: 258193713417.dkr.ecr.eu-north-1.amazonaws.com/tsunami-runner:latest # TODO Update
+        env:
+        - name: MANAGER_SERVICE_HOST
+          value: manager-service.default.svc.cluster.local
+        - name: MANAGER_SERVICE_PORT
+          value: "8080"
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 200m
+            memory: 256Mi
+---
+# service definition for redis
+apiVersion: v1
+kind: Service
+metadata:
+  name: application-container-service
+spec:
+  selector:
+    app: application-container
+  ports:
+    - port: 80
+      targetPort: 80
+      nodePort: 8080  
+    - port: 443
+      targetPort: 443
+      nodePort: 8443 
+  type: LoadBalancer 
+
+
+
+
+
+
+---
+# Deployment for postgres
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-service-container
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres-service-container
+  template:
+    metadata:
+      labels:
+        app: postgres-service-container
+    spec:
+      serviceAccountName: tsunami-manager-sa
+      containers:
+      - name: runner
+        image: 258193713417.dkr.ecr.eu-north-1.amazonaws.com/tsunami-runner:latest # TODO Update
+        env:
+        - name: POSTGRES_SERVICE_HOST
+          value: postgres-service.svc.cluster.local
+        - name: POSTGRES_SERVICE_PORT
+          value: "5432"
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 200m
+            memory: 256Mi
+
+---
+# Service for postgres
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-service
+  namespace: default
+spec:
+  selector:
+    app: postgres-service-container
+
+
