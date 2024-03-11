@@ -59,6 +59,7 @@ struct Config {
 
     //redis
     redis_server: String,
+    redis_port: u16,
 
     //database
     db_path: String,
@@ -84,7 +85,6 @@ struct RedisState{
 struct RedisState {
     pub connection: Arc<Client>, 
 }
-
 
 #[derive(Clone, Default)]
 struct DatabaseState {
@@ -124,7 +124,9 @@ async fn main() {
             tracing::debug!("Connected to Redis successfully!");
         }
         Err(e) => {
-            panic!("Could not connect to Redis: {}", e);
+            tracing::error!("Could not connect to Redis: {}", e);
+            //panic!("Could not connect to Redis: {}", e);
+
         }
     }
     

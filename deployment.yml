@@ -1,16 +1,4 @@
 
-# Service Account for sidecar
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: tsunami-manager-sa
-  annotations:
-    eks.amazonaws.com/role-arn: "arn:aws:iam::258193713417:role/eksctl-tsunami-cluster-addon-iamserviceaccoun-Role1-vltL5IuJ1Ndd" # TODO Update
-  namespace: default
-
-
-
-
 ---
 # Deployment for web application container
 apiVersion: apps/v1 

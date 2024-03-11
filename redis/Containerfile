@@ -1,0 +1,16 @@
+# Use the official Redis image as a base
+FROM redis:latest
+
+# Set the working directory inside the container
+WORKDIR /usr/local/etc/redis
+
+# Copy the custom Redis configuration file into the container
+COPY redis.conf ./redis.conf
+#/usr/local/etc/redis/redis.conf
+
+# Copy SSL certificates and private key into the container
+COPY ./cert.pem ./redis-server.pem
+COPY ./key.pem ./redis-server.key
+
+# Command to run Redis server with the specified configuration file
+CMD ["redis-server", "/usr/local/etc/redis/redis.conf" ]
