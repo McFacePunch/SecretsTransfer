@@ -17,5 +17,5 @@ tokio-rustls = "0.25.0"
 tower = "0.4.13"
 tower-http = "0.5.2"
 http-body-util = "0.1.0"
-redis = "0.24.0"
-
+redis = { version = "0.25.0", features = ["tokio-comp"]  }
+uuid = {version = "1.7.0", features = ["v4", "fast-rng", "macro-diagnostics",]}

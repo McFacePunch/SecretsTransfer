@@ -2,29 +2,23 @@ use axum::{
     body::{Body, Bytes},
     extract::Request,
     http::StatusCode,
-    middleware::{self, Next},
+    middleware::Next,
     response::{IntoResponse, Response},
-    routing::post,
-    Router,
 };
 use axum::extract::Extension;
 use axum::extract::ConnectInfo;
-use axum::extract::FromRequest;
 //use axum::Error;
 
-use tower::{BoxError, Service, ServiceExt};
-use tower::ServiceBuilder;
-
-use axum::http::header::HeaderMap;
+use tower::BoxError;
 
 
 
 use http_body_util::BodyExt;
 
-use std::{future, net::SocketAddr, task::Poll};
-use std::error::Error;
+use std::net::SocketAddr;
+//use std::error::Error;
 
-use tracing_subscriber::{layer::{Context, SubscriberExt}, util::SubscriberInitExt};
+//use tracing_subscriber::{layer::{Context, SubscriberExt}, util::SubscriberInitExt};
 
 
 struct CatchAllErrorMiddleware;

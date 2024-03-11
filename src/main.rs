@@ -5,75 +5,43 @@
 // TODO: Consider feature flags?
 
 
-#![allow(unused_imports)]
-
-use axum::{
-    extract::Host,
-    handler::HandlerWithoutStateExt,
-    http::{StatusCode, Uri},
-    response::Redirect,
-    routing::get,
-    routing::post,
-    BoxError, Router,
+// Standard library imports
+use std::{
+    net::SocketAddr,
+    path::PathBuf,
+    fs,
+    io,
 };
-use axum::{ response::IntoResponse,};
-use axum::middleware::from_fn;
-use axum::middleware;
-use axum::error_handling::HandleErrorLayer;
-use axum::Extension;
 
+// External crate imports
+use axum::{
+    extract::Host, handler::HandlerWithoutStateExt, http::{StatusCode, Uri},
+    middleware, response::Redirect, routing::get, BoxError, Extension, Router
+};
 use axum_server::tls_rustls::RustlsConfig;
 
-use rustls::{
-    server::{NoClientAuth},
-    sign::CertifiedKey,
-    CipherSuite, RootCertStore, SupportedCipherSuite,
-};
-
-use tower::ServiceBuilder;
-use tokio::time::error;
-//use tower_http::{add_extension::AddExtensionLayer, trace::TraceLayer};
-
-use serde::{Deserialize, Deserializer};
-
 use clap::Parser;
-
 use core::panic;
-use std::{net::SocketAddr, net::IpAddr, path::PathBuf, str::FromStr, sync::Arc};
-use std::fs;
-use std::io;
-use std::time::Duration;
-
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-use tracing_subscriber::fmt;
-use tracing_subscriber::prelude::*;
-use tracing_subscriber::filter::LevelFilter;
-use tracing::{debug, error, info, trace};
-
-use std::convert::TryFrom;
-use std::fs::File;
-use std::io::BufReader;
-
-use tokio::net::TcpStream;
-use tokio_rustls::{
-    TlsAcceptor,
-    TlsConnector,
-    rustls::{self},
-    client::TlsStream as ClientTlsStream,
+use serde::Deserialize;
+use tracing;
+use tracing_subscriber::{
+    filter::LevelFilter,
+    fmt,
+    layer::SubscriberExt, 
+    prelude::*,
 };
-use tokio::net::TcpListener; 
+
+use std::sync::Arc;
+
+use redis::AsyncCommands;
+use redis::Client;
+
+// Local imports
 
 mod other;
-use other::print_secrets_transfer_with_lock_ascii;
-use other::ascii_art;
-
 mod api;
 mod custom_middleware;
-mod redis;
-//use api; //::{login_handler, logout_handler, status_handler, not_found};
-
-//use axum::prelude::*;
-//use axum::middleware::Logger;
+mod redis_client;
 
 #[allow(dead_code)]
 #[derive(Deserialize,Debug)]
@@ -109,6 +77,20 @@ struct Ports {
     https: u16,
 }
 
+/* #[derive(Clone)]
+struct RedisState{
+   pub connection: Client,
+} */
+struct RedisState {
+    pub connection: Arc<Client>, 
+}
+
+
+#[derive(Clone, Default)]
+struct DatabaseState {
+    //pub connection: T,
+}
+
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
@@ -126,7 +108,7 @@ async fn main() {
         panic!("[!] No configuration file provided");
     }
 
-    ascii_art(); // eh why not?
+    other::ascii_art(); // eh why not?
 
     tracing::info!("Using configuration file: {}", args.config);
     let config = load_config(&args.config).unwrap();
@@ -134,45 +116,46 @@ async fn main() {
 
     setup_logging(&config);
 
-    /*let redis_status = match redis::check_redis_connection() {
-        Ok(_) =>{
-            tracing::debug!("Connected to Redis successfully!")
-        } 
-        Err(e) => {
-            tracing::debug!("Could not connect to Redis: {}", e);
-            panic!("Could not connect to Redis: {}", e)
-        }
-    };*/
-
-    //remove this
+    // setup redis
     tracing::debug!("Redis server: {}", config.redis_server);
-    tracing::debug!("Database path: {}", config.db_path);
+    let shared_redis_client = redis_client::connect_to_redis(&config.redis_server).await;
+    match shared_redis_client {
+        Ok(client) => {
+            tracing::debug!("Connected to Redis successfully!");
+        }
+        Err(e) => {
+            panic!("Could not connect to Redis: {}", e);
+        }
+    }
     
-    // configure the ports used by the server, passed to http handler
-    let ports = Ports { //todo move to two args vs this setup
-        http: config.http_port,
-        https: config.https_port,
+    // TODO setup database
+
+    // uuid <--> Secrets routes
+    let client = redis_client::connect_to_redis(&config.redis_server).await;
+    let shared_state = match client {
+        Ok(client) => RedisState { connection: Arc::new(client) },
+        Err(e) => panic!("Could not connect to Redis: {}", e),
     };
-    
-    // optional: spawn a second server to redirect http requests to this server
-    if config.http_redirection {
-        tracing::info!("Spawning HTTP redirection server on port {}", ports.http);
-        tokio::spawn(redirect_http_to_https(ports));
+    #[derive(Clone)]
+    struct RedisState {
+        pub connection: Arc<Client>, 
     }
 
-    // configure certificate and private key used by http(s) server
-    let cert_path_buf = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(config.cert_path);
-    let key_path_buf = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(config.key_path);
-
-    tracing::info!("Using certificate at: {:?}", cert_path_buf);
-    tracing::info!("Using private key at: {:?}", key_path_buf);
+    let secrets_routes = Router::new()
+        .route("/create_secret_url", get(|| async { /* Logic here */ }))
+        //.route("/create_secret_url", get(api::create_secret_url))
+        .route("/retrieve_secret_url", get(|| async { /* Logic here */ }))
+        //.route("/retrieve_secret_url", get(api::retrieve_secret_url))
+        //.layer(Extension(shared_redis_connection)) // create a layer for auth always flag
+        .with_state(shared_state.clone());
+        //.with_state(shared_redis_connection.clone());
 
     let webserver = Router::new()
         .route("/favicon.ico", get(api::favicon))
         .route("/", get(api::root_handler))
-        .route("/create_secret_url", get(api::create_secret_url) )
-        //.route("/retrieve_secret_url", get(api::retrieve_secret_url) )
-        //.route("/secret/:id", get(api::retrieve_secret) ) // todo use more CRUD
+
+        // redis routes
+        .nest("/secrets", secrets_routes)   
 
         .route("/signup", get(api::signup_get_handler).post(api::signup_post_handler))
         //.route("/login", post(api::login_handler))
@@ -189,7 +172,25 @@ async fn main() {
         .route("/*any", get(api::not_found))//;
         .layer(middleware::from_fn(custom_middleware::print_request_response))//;
         .layer(Extension(config.debug_requests));
+        //.layer(Extension(redis_connection));
         //.layer(HandleErrorLayer::new(custom_middleware::handle_error));
+
+
+    let ports = Ports { //todo move to two args vs this setup?
+        http: config.http_port,
+        https: config.https_port,
+    };
+    
+    // optional: spawn a second server to redirect http requests to this server
+    if config.http_redirection {
+        tracing::info!("Spawning HTTP redirection server on port {}", ports.http);
+        tokio::spawn(redirect_http_to_https(ports));
+    }
+
+    let cert_path_buf = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(config.cert_path);
+    let key_path_buf = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(config.key_path);
+    tracing::info!("Using certificate at: {:?}", cert_path_buf);
+    tracing::info!("Using private key at: {:?}", key_path_buf);
 
     let tls_config = RustlsConfig::from_pem_file(cert_path_buf, key_path_buf).await.unwrap();
 

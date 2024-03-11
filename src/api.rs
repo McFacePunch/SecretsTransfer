@@ -5,31 +5,36 @@
 // TODOL Encrypt secret at rest
 
 use axum::{
-    body::{Body, Bytes},
-    extract::Host,
-    extract::Request,
-    routing::{get, post},
+    body::Body,
     http::StatusCode,
     response::{IntoResponse, Redirect, Response},
-    Router,
-    BoxError,
 };
 use axum::http::header::HeaderMap;
-use axum::extract::Query;
 use axum::extract::ConnectInfo;
-use axum::extract::{Form, Path};
+use axum::extract::Form;
 use axum::response::Html;
-use serde::Deserialize;
+use axum::extract::Extension;
 
-use axum::Error;
+use redis::{Commands, Connection, RedisError};
+
+use serde::Deserialize;
 
 use tokio::fs::read;
 
-use http_body_util::BodyExt;
+//use http_body_util::BodyExt;
 
 use std::{convert::Infallible, path::PathBuf};
 use std::net::{IpAddr, SocketAddr};
 use std::fmt::Write; 
+
+use uuid::Uuid;
+
+//use crate::redis_client;
+//use redis::aio::Connection;
+extern crate redis;
+
+//mod redis_client;
+
 
 #[derive(Deserialize)]
 pub struct SignupForm {
@@ -54,7 +59,6 @@ pub async fn favicon() -> Result<Response<Body>, Infallible> {
     Ok(response)
 }
 
-
 pub async fn root_handler() -> impl IntoResponse {
     (StatusCode::OK, "Hellow World!").into_response()
 }
@@ -63,23 +67,39 @@ pub async fn status_handler() -> impl IntoResponse {
     (StatusCode::OK, "Service is running").into_response()
 }
 
-#[allow(dead_code)]
 pub async fn login_handler() -> impl IntoResponse {
     (StatusCode::OK, "Login Page").into_response()
 }
 
-#[allow(dead_code)]
 pub async fn logout_handler() -> impl IntoResponse {
     (StatusCode::OK, "Logout Page").into_response()
 }
 
-#[allow(dead_code)]
 pub async fn redirect_to_login() -> Redirect {
     Redirect::temporary("login")
 }
 
-pub async fn create_secret_url() -> impl IntoResponse {
-    (StatusCode::OK, "Secret URL").into_response()
+pub async fn create_secret_url(Extension(redis_connection): Extension<Connection>) -> impl IntoResponse {
+    // Use the connection 'conn' to store secrets in Redis
+    //let conn = &redis_connection;
+
+    let secret_uuid = uuid::Uuid::new_v4().to_string();
+    // send uuid as key and secret as value
+
+    //generate URL with UUID
+    let base_url = "http://localhost:8443/secret/";
+    let secret_url = format!("{}{}", base_url, secret_uuid);
+
+    //redis_client::set_value_with_retries(redis_connection, secret_uuid, "secret").await.unwrap();
+
+    //(StatusCode::OK, secret_url).into_response()
+   (StatusCode::CREATED, "Secret created successfully")  //temp
+}
+
+// pub async fn create_secret_url(Extension(shared_conn): Extension<Arc<Connection>>) -> String {
+pub async fn retrieve_secret_url(Extension(redis_connection): Extension<Connection>) -> impl IntoResponse {
+    //let mut value = redis_client::get_value_with_retries(redis_connection, "test_key").await.unwrap();
+    (StatusCode::CREATED, "Secret created found")  //temp
 }
 
 //expanded connection info example
@@ -110,7 +130,7 @@ pub async fn header_handler(headers: HeaderMap) -> impl IntoResponse {
 }
 
 pub async fn signup_get_handler() -> impl IntoResponse {
-    let html =(r#"
+    let html =r#"
         <!DOCTYPE html>
         <html>
         <head>
@@ -150,7 +170,7 @@ pub async fn signup_get_handler() -> impl IntoResponse {
             </script>-
         </body>
         </html>
-    "#);
+    "#;
 
     //(StatusCode::OK, Html(html)).into_response();
     Html(html) // returns a 200 as well
@@ -165,7 +185,6 @@ pub async fn signup_post_handler(Form(signup_data): Form<SignupForm>) -> StatusC
     StatusCode::CREATED
 } 
 
-
 pub async fn not_found() -> impl IntoResponse {
     (StatusCode::NOT_FOUND, "404, Not Found").into_response()
 }
@@ -174,17 +193,3 @@ pub async fn not_found() -> impl IntoResponse {
 pub async fn trigger_error() -> Result<impl IntoResponse, std::convert::Infallible> {
     Err("This is a forced error".to_string())
 }*/
-
-
-/* fn log_request(request: &Request<Body>) {
-    let method = request.method();
-    let uri = request.uri();
-    let headers = request.headers();
-
-    tracing::info!(
-        method = ?method,
-        uri = ?uri,
-        headers = ?headers,
-        "Received a request"
-    );
-} */
