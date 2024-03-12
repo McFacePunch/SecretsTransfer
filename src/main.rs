@@ -11,6 +11,7 @@ use std::{
     path::PathBuf,
     fs,
     io,
+    sync::Arc,
 };
 
 // External crate imports
@@ -21,19 +22,21 @@ use axum::{
 use axum_server::tls_rustls::RustlsConfig;
 
 use clap::Parser;
+
 use core::panic;
+
 use serde::Deserialize;
+
 use tracing;
 use tracing_subscriber::{
     filter::LevelFilter,
-    fmt::{self, format},
+    //fmt::{self, format},
     layer::SubscriberExt, 
     prelude::*,
 };
+use tracing_subscriber::fmt;
 
-use std::sync::Arc;
 
-use redis::AsyncCommands;
 use redis::Client;
 
 // Local imports
@@ -117,16 +120,16 @@ async fn main() {
     setup_logging(&config);
 
     // setup redis
-    tracing::info!("Redis server: {}:{}", config.redis_server, config.redis_port);
     let connection_string = format!("{}:{}/0", config.redis_server, config.redis_port);
     tracing::debug!("Redis server: {}", connection_string);
+
     let shared_redis_client = redis_client::connect_to_redis(&connection_string).await;
     match shared_redis_client {
         Ok(client) => {
             tracing::debug!("Connected to Redis successfully!");
         }
         Err(e) => {
-            tracing::error!("Could not connect to Redis: {}", e);
+            //tracing::error!("Could not connect to Redis: {}", e);
             panic!("Exiting due to Redis error:\n{}", e);
 
         }

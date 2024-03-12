@@ -57,6 +57,13 @@ undeploy:
 	kubectl --kubeconfig $(KUBECONFIG) delete -f deployment.yml
 
 
+
+# Test Certs
+certs:
+	cd test && ./make-test-certs.sh ./ 127.0.0.1
+#	cd test && ./make-test-certs.sh ../src/ 127.0.0.1
+#	cd test && ./make-test-certs.sh ../redis/ 127.0.0.1
+
 # Run
 run:
 	nerdctl run -d -p 6379:6379 --name redis $(REDIS_IMAGE)
@@ -69,5 +76,6 @@ stop:
 
 # Clean up
 clean:
-	rm ./src/SecretsTransfer
+	-rm ./src/SecretsTransfer
+	-rm -rf ./test/certs/
 	cargo clean

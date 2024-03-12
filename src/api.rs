@@ -1,21 +1,18 @@
-//use axum::{handler::get, handler::post, Router, response::IntoResponse, http::StatusCode, routing::fallthrough};
-
 // TODO: create a middleware to check if the user is AuthN/AuthZ'd
 // TODO: implement dual token generation (lookup+crypto tokens) and secret storage in Redis 
-// TODOL Encrypt secret at rest
+// TODO: Encrypt secret at rest
 
 use axum::{
     body::Body,
     http::StatusCode,
-    response::{IntoResponse, Redirect, Response},
+    response::{IntoResponse, Redirect, Response, Html},
+    http::header::HeaderMap,
+    extract::ConnectInfo,
+    extract::Form,
+    extract::Extension,
 };
-use axum::http::header::HeaderMap;
-use axum::extract::ConnectInfo;
-use axum::extract::Form;
-use axum::response::Html;
-use axum::extract::Extension;
 
-use redis::{Commands, Connection, RedisError};
+use redis::Connection;
 
 use serde::Deserialize;
 
@@ -23,17 +20,18 @@ use tokio::fs::read;
 
 //use http_body_util::BodyExt;
 
-use std::{convert::Infallible, path::PathBuf};
-use std::net::{IpAddr, SocketAddr};
-use std::fmt::Write; 
+use std::{
+    convert::Infallible, path::PathBuf, 
+    net::{IpAddr, SocketAddr}, fmt::Write
+};
 
 use uuid::Uuid;
 
-//use crate::redis_client;
+use crate::redis_client;
 //use redis::aio::Connection;
-extern crate redis;
+//extern crate redis;
 
-//mod redis_client;
+mod redis_client;
 
 
 #[derive(Deserialize)]
@@ -90,7 +88,7 @@ pub async fn create_secret_url(Extension(redis_connection): Extension<Connection
     let base_url = "http://localhost:8443/secret/";
     let secret_url = format!("{}{}", base_url, secret_uuid);
 
-    //redis_client::set_value_with_retries(redis_connection, secret_uuid, "secret").await.unwrap();
+    crate::redis_client::set_value_with_retries(redis_connection, &secret_uuid, "secret-test").await.unwrap();
 
     //(StatusCode::OK, secret_url).into_response()
    (StatusCode::CREATED, "Secret created successfully")  //temp

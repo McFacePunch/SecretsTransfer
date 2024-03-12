@@ -22,6 +22,7 @@ pub async fn get_value_from_redis(con: &mut redis::aio::MultiplexedConnection, k
     Ok(value)
 }
 
+// Improve this with one function to retry both get and set
 pub async fn get_value_with_retries(
     con: &mut redis::aio::MultiplexedConnection,
     key: &str,
