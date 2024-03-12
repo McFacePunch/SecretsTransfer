@@ -26,7 +26,7 @@ use serde::Deserialize;
 use tracing;
 use tracing_subscriber::{
     filter::LevelFilter,
-    fmt,
+    fmt::{self, format},
     layer::SubscriberExt, 
     prelude::*,
 };
@@ -117,15 +117,17 @@ async fn main() {
     setup_logging(&config);
 
     // setup redis
-    tracing::debug!("Redis server: {}", config.redis_server);
-    let shared_redis_client = redis_client::connect_to_redis(&config.redis_server).await;
+    tracing::info!("Redis server: {}:{}", config.redis_server, config.redis_port);
+    let connection_string = format!("{}:{}/0", config.redis_server, config.redis_port);
+    tracing::debug!("Redis server: {}", connection_string);
+    let shared_redis_client = redis_client::connect_to_redis(&connection_string).await;
     match shared_redis_client {
         Ok(client) => {
             tracing::debug!("Connected to Redis successfully!");
         }
         Err(e) => {
             tracing::error!("Could not connect to Redis: {}", e);
-            //panic!("Could not connect to Redis: {}", e);
+            panic!("Exiting due to Redis error:\n{}", e);
 
         }
     }

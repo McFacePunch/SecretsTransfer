@@ -16,6 +16,11 @@ release: compile_release container
 
 release_x86: compile_x86_64 container_x86_64
 
+# Compile + Run, compile debug and start server
+cr: compile_debug start_server
+
+start_server:
+	./src/SecretsTransfer --config src/config/config.json
 
 
 # Cross-compilation release

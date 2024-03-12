@@ -5,10 +5,10 @@
 
     "http_redirection": true,
 
-    "cert_path": "config/cert.pem",
-    "key_path": "config/key.pem",
+    "cert_path": "src/config/cert.pem",
+    "key_path": "src/config/key.pem",
 
-    "redis_server": "redis://127.0.0.1/",
+    "redis_server": "redis://127.0.0.1",
     "redis_port": 6379,
 
     "db_path": "path/to/db",
