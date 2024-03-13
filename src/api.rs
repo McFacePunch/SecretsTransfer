@@ -157,7 +157,7 @@ pub async fn store_secret_post(
     let secret_uuid = uuid::Uuid::new_v4().to_string();
 
     // Store in Redis
-    crate::redis_client::set_value_with_retries(&mut redis_connection, &secret_uuid, &secret_string)
+    crate::redis_client::set_value_with_retries(&mut redis_connection.clone(), &secret_uuid, &secret_string)
     .await
     .map_err(|err| {
         // Handle Redis errors
