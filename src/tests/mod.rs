@@ -48,38 +48,40 @@ async fn test_signup_get_handler() {
 
     #[tokio::test]
     async fn test_signup_post_handler_invalid_email() {
-        let signup_data = SignupForm {
+        /*let signup_data = SignupForm {
             email: "invalid_email_format".to_string(),
             password: "strongpassword".to_string(),
-        };
+        };*/
+        let data = "email=wadadwwwwwwwww&password=SVq%26%264kMA%255qt%3BS";
 
         let request = Request::builder()
             .method("POST")
             .uri("/signup")
             .header(http::header::CONTENT_TYPE, "application/x-www-form-urlencoded") // Optional, may be set automatically by Axum
-            .body(Body::from(serde_urlencoded::to_string(&signup_data).unwrap())) // Convert SignupForm to URL-encoded string
+            .body(Body::from(serde_urlencoded::to_string(data).unwrap())) // Convert SignupForm to URL-encoded string
             .unwrap();
 
-        let response = api::signup_post_handler(Form(signup_data)).await;
+        let response = api::signup_post_handler(Form(data)).await;
         assert_eq!(response, StatusCode::BAD_REQUEST); 
     }
 
     #[tokio::test]
     async fn test_signup_post_handler_valid_email() {
-        let signup_data = SignupForm {
+        /*let signup_data = SignupForm {
             email: "wdwdw@wdawd.co".to_string(),
             password: "strongpassword".to_string(),
-        };
+        };*/
+        let data = "email=wadadw%40wad.co&password=SVq%26%264kMA%255qt%3BS";
 
         let request = Request::builder()
             .method("POST") 
             .uri("/signup")
             .header(http::header::CONTENT_TYPE, "application/x-www-form-urlencoded") // Add this line
-            .body(Body::from(serde_urlencoded::to_string(&signup_data).unwrap()))
+            .body(Body::from(serde_urlencoded::to_string(data).unwrap()))
             .unwrap();
 
-        let response = api::signup_post_handler(Form(signup_data)).await;
-        assert_eq!(response, StatusCode::BAD_REQUEST); 
+        let response = api::signup_post_handler(Form(&data)).await;
+        assert_eq!(response, StatusCode::CREATED); 
     }
 
 
