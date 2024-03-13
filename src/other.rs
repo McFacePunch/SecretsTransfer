@@ -37,6 +37,7 @@ pub fn ascii_art(){
    "#);                                                                        
 }
 
+#[allow(dead_code)]
 pub fn print_secrets_transfer_with_lock_ascii() {
     // Thanks ChatGPT for being trash at ASCII art
     println!(r#"

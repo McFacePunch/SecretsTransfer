@@ -15,9 +15,11 @@ use std::{
 };
 
 // External crate imports
+//{FromRequest, Host}
 use axum::{
     extract::Host, handler::HandlerWithoutStateExt, http::{StatusCode, Uri},
-    middleware, response::Redirect, routing::get, BoxError, Extension, Router
+    middleware, response::Redirect, routing::{get, post}, BoxError, Extension, Router,
+    extract::State
 };
 use axum_server::tls_rustls::RustlsConfig;
 
@@ -30,14 +32,12 @@ use serde::Deserialize;
 use tracing;
 use tracing_subscriber::{
     filter::LevelFilter,
-    //fmt::{self, format},
     layer::SubscriberExt, 
     prelude::*,
 };
 use tracing_subscriber::fmt;
 
-
-use redis::Client;
+use redis::aio::MultiplexedConnection;
 
 // Local imports
 
@@ -45,6 +45,11 @@ mod other;
 mod api;
 mod custom_middleware;
 mod redis_client;
+
+#[derive(Clone)]
+struct RedisState {
+    pub _conn: Arc<MultiplexedConnection>, 
+}
 
 #[allow(dead_code)]
 #[derive(Deserialize,Debug)]
@@ -81,13 +86,6 @@ struct Ports {
     https: u16,
 }
 
-/* #[derive(Clone)]
-struct RedisState{
-   pub connection: Client,
-} */
-struct RedisState {
-    pub connection: Arc<Client>, 
-}
 
 #[derive(Clone, Default)]
 struct DatabaseState {
@@ -119,68 +117,60 @@ async fn main() {
 
     setup_logging(&config);
 
-    // setup redis
-    let connection_string = format!("{}:{}/0", config.redis_server, config.redis_port);
+    // Database stuff
+    //TODO
+
+
+
+    // Redis
+    let connection_string = format!("{}:{}", config.redis_server, config.redis_port);
     tracing::debug!("Redis server: {}", connection_string);
 
     let shared_redis_client = redis_client::connect_to_redis(&connection_string).await;
-    match shared_redis_client {
-        Ok(client) => {
-            tracing::debug!("Connected to Redis successfully!");
-        }
-        Err(e) => {
-            //tracing::error!("Could not connect to Redis: {}", e);
-            panic!("Exiting due to Redis error:\n{}", e);
+    /*match shared_redis_client {
+        Ok(_) => {tracing::debug!("Connected to Redis successfully!");}
+        Err(e) => {panic!("Exiting due to Redis error:\n{}", e);}
+    }*/
 
-        }
-    }
+    // Make a sharable state for the Redis connection
+    //let shared_state = RedisState { _conn: Arc::new(shared_redis_client) };
+    //let redis_connection: Arc<Mutex<MultiplexedConnection>> = Arc::new(Mutex::new(/* your connection here */));
+
     
-    // TODO setup database
 
     // uuid <--> Secrets routes
-    let client = redis_client::connect_to_redis(&config.redis_server).await;
-    let shared_state = match client {
-        Ok(client) => RedisState { connection: Arc::new(client) },
-        Err(e) => panic!("Could not connect to Redis: {}", e),
-    };
-    #[derive(Clone)]
-    struct RedisState {
-        pub connection: Arc<Client>, 
-    }
-
     let secrets_routes = Router::new()
-        .route("/create_secret_url", get(|| async { /* Logic here */ }))
-        //.route("/create_secret_url", get(api::create_secret_url))
-        .route("/retrieve_secret_url", get(|| async { /* Logic here */ }))
-        //.route("/retrieve_secret_url", get(api::retrieve_secret_url))
-        //.layer(Extension(shared_redis_connection)) // create a layer for auth always flag
-        .with_state(shared_state.clone());
-        //.with_state(shared_redis_connection.clone());
+        //.route("/store_secret", get(|State(state): State<MultiplexedConnection>|top_level_handler_fn!(get, api::store_secret)))
+        .route("/store_secret", get(api::store_secret))
+        //.route("/retrieve_secret", get(api::retrieve_secret))
+        .route("/retrieve_secret/:uuid", get(api::retrieve_secret))
+        .route("/*any", get(api::not_found))
+        .layer(Extension(shared_redis_client)); // create a layer for enforced auth
+        //.with_state(shared_redis_client.clone());
 
     let webserver = Router::new()
         .route("/favicon.ico", get(api::favicon))
         .route("/", get(api::root_handler))
 
-        // redis routes
+        // redis route nesting
         .nest("/secrets", secrets_routes)   
 
+        // User routes
         .route("/signup", get(api::signup_get_handler).post(api::signup_post_handler))
-        //.route("/login", post(api::login_handler))
-        //.route("/logout", post(api::logout_handler))
+        .route("/login", post(api::login_handler))
+        .route("/logout", post(api::logout_handler))
 
-        // Debug Routes
-        // fault injection to test middleware later
+        // Debug/Info Routes
         .route("/status", get(api::status_handler))
         .route("/headers", get(api::header_handler))
         .route("/connection", get(api::connection_handler))
-        //.route("/trigger_error", get(trigger_error))
+        //.route("/trigger_error", get(trigger_error)) // TODO: fault injection to test middleware
         
         // catch all handles and layers
-        .route("/*any", get(api::not_found))//;
-        .layer(middleware::from_fn(custom_middleware::print_request_response))//;
+        .route("/*any", get(api::not_found))
+        .layer(middleware::from_fn(custom_middleware::print_request_response))
         .layer(Extension(config.debug_requests));
-        //.layer(Extension(redis_connection));
-        //.layer(HandleErrorLayer::new(custom_middleware::handle_error));
+        //.layer(HandleErrorLayer::new(custom_middleware::handle_error)); // TODO: wrap all error via this handler middleware
 
 
     let ports = Ports { //todo move to two args vs this setup?

@@ -21,7 +21,7 @@ use std::net::SocketAddr;
 //use tracing_subscriber::{layer::{Context, SubscriberExt}, util::SubscriberInitExt};
 
 
-struct CatchAllErrorMiddleware;
+//struct CatchAllErrorMiddleware;
 
 
 pub async fn print_request_response(Extension(debug_requests): Extension<bool>,
@@ -84,7 +84,7 @@ where
 }
 
 
-
+#[allow(dead_code)]
 //pub async fn handle_timeout_error(err: BoxError,) -> (StatusCode, String) {
 pub async fn handle_timeout_error(err: Box<dyn std::error::Error + Send + Sync + 'static>) -> (StatusCode, String) {
     (
@@ -93,11 +93,11 @@ pub async fn handle_timeout_error(err: Box<dyn std::error::Error + Send + Sync +
     )
 }
 
-
+#[allow(dead_code)]
 pub async fn handle_error(err: BoxError, Extension(debug_requests): Extension<bool>,  ConnectInfo(remote_addr): ConnectInfo<SocketAddr>, req: Request, next: Next) -> Result<Response<Body>, BoxError> {
     // Log the error and option verbose logging under debug mode
     tracing::error!("Error: {}.", err);// Caused by: {}", err, err.source().unwrap_or_default);
-    let mut response;
+    let response;
 
     if debug_requests {
         // debug mode so return full info
@@ -141,7 +141,8 @@ pub async fn handle_error(err: BoxError, Extension(debug_requests): Extension<bo
 
     // Return the response
     let res = next.run(req).await;
-    return Ok(res)
+    //return Ok(res)
+    return Ok(response)
 }
 
 

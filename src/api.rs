@@ -3,36 +3,32 @@
 // TODO: Encrypt secret at rest
 
 use axum::{
-    body::Body,
-    http::StatusCode,
-    response::{IntoResponse, Redirect, Response, Html},
-    http::header::HeaderMap,
-    extract::ConnectInfo,
-    extract::Form,
-    extract::Extension,
+    body::Body, debug_handler, 
+    extract::{ConnectInfo, Extension, Form, Path, Query, Json},
+    http::{header::HeaderMap, status, StatusCode},
+    response::{Html, IntoResponse, Redirect, Response}
 };
-
-use redis::Connection;
-
+use redis::aio::MultiplexedConnection;
 use serde::Deserialize;
-
 use tokio::fs::read;
-
-//use http_body_util::BodyExt;
-
+use uuid::Uuid;
 use std::{
     convert::Infallible, path::PathBuf, 
     net::{IpAddr, SocketAddr}, fmt::Write
 };
 
-use uuid::Uuid;
+use validator::Validate; 
+
+use base64;
+//use uuid::Uuid;
 
 use crate::redis_client;
-//use redis::aio::Connection;
-//extern crate redis;
 
-mod redis_client;
-
+#[derive(Deserialize, Validate)]
+struct SecretData {
+    #[validate(length(max = 1024, message = "Secret exceeds maximum size of 1KB"))]
+    secret: String, // Base64-encoded secret
+}
 
 #[derive(Deserialize)]
 pub struct SignupForm {
@@ -71,60 +67,6 @@ pub async fn login_handler() -> impl IntoResponse {
 
 pub async fn logout_handler() -> impl IntoResponse {
     (StatusCode::OK, "Logout Page").into_response()
-}
-
-pub async fn redirect_to_login() -> Redirect {
-    Redirect::temporary("login")
-}
-
-pub async fn create_secret_url(Extension(redis_connection): Extension<Connection>) -> impl IntoResponse {
-    // Use the connection 'conn' to store secrets in Redis
-    //let conn = &redis_connection;
-
-    let secret_uuid = uuid::Uuid::new_v4().to_string();
-    // send uuid as key and secret as value
-
-    //generate URL with UUID
-    let base_url = "http://localhost:8443/secret/";
-    let secret_url = format!("{}{}", base_url, secret_uuid);
-
-    crate::redis_client::set_value_with_retries(redis_connection, &secret_uuid, "secret-test").await.unwrap();
-
-    //(StatusCode::OK, secret_url).into_response()
-   (StatusCode::CREATED, "Secret created successfully")  //temp
-}
-
-// pub async fn create_secret_url(Extension(shared_conn): Extension<Arc<Connection>>) -> String {
-pub async fn retrieve_secret_url(Extension(redis_connection): Extension<Connection>) -> impl IntoResponse {
-    //let mut value = redis_client::get_value_with_retries(redis_connection, "test_key").await.unwrap();
-    (StatusCode::CREATED, "Secret created found")  //temp
-}
-
-//expanded connection info example
-pub async fn connection_handler(ConnectInfo(remote_addr): ConnectInfo<SocketAddr>) -> impl IntoResponse {
-    // Extract client's IP Address
-    let client_ip = match remote_addr.ip() {
-        IpAddr::V4(ip) => ip.to_string(),
-        IpAddr::V6(ip) => ip.to_string(),
-    };
-
-    format!("Hello from client: {}", client_ip)
-}
-
-// headermap example
-#[allow(dead_code)]
-pub async fn header_handler(headers: HeaderMap) -> impl IntoResponse {
-    // Access a specific header
-    //if let Some(content_type) = headers.get("content-type") {
-        //format!("Content-Type: {}", content_type.to_str().unwrap_or("unknown"))
-    //} else {format!"No Content-Type header found".to_string();}
-    let mut output = String::new();
-
-    for (key, value) in headers.iter() {
-        let _ = writeln!(&mut output, "{}: {}", key, value.to_str().unwrap_or("invalid value")); 
-    }
-
-    output
 }
 
 pub async fn signup_get_handler() -> impl IntoResponse {
@@ -183,8 +125,127 @@ pub async fn signup_post_handler(Form(signup_data): Form<SignupForm>) -> StatusC
     StatusCode::CREATED
 } 
 
+#[allow(dead_code)]
+pub async fn redirect_to_login() -> Redirect {
+    Redirect::temporary("login")
+}
+
+#[debug_handler]
+pub async fn store_secret(Extension(redis_connection): Extension<MultiplexedConnection>) -> impl IntoResponse {
+    // send uuid as key and secret as value
+
+    let secret_uuid = uuid::Uuid::new_v4().to_string();
+
+    //generate URL with UUID
+    let base_url = "https://localhost:8443/secrets/retrieve_secret/";
+    let secret_url = format!("Secret-test:\n{}{}", base_url, secret_uuid);
+
+    crate::redis_client::set_value_with_retries(&mut redis_connection.clone(), &secret_uuid, &secret_url).await.unwrap();
+
+    (StatusCode::OK, secret_url).into_response()
+}
+
+#[debug_handler]
+pub async fn store_secret_post(
+    Extension(redis_connection): Extension<MultiplexedConnection>,
+    Json(payload): Json<SecretData>,
+) -> impl IntoResponse {
+    // Get the secret from the JSON payload and encode it
+    let secret_string = base64::encode(&payload.secret);
+
+    // Generate UUID
+    let secret_uuid = uuid::Uuid::new_v4().to_string();
+
+    // Store in Redis
+    crate::redis_client::set_value_with_retries(&mut redis_connection, &secret_uuid, &secret_string)
+    .await
+    .map_err(|err| {
+        // Handle Redis errors
+        StatusCode::INTERNAL_SERVER_ERROR
+    });
+
+    // Generate Response URL (adjust if needed)
+    let base_url = "https://localhost:8443/secrets/retrieve_secret/";
+    let secret_url = format!("Secret-test:\n{}{}", base_url, secret_uuid);
+
+    (StatusCode::CREATED, secret_url).into_response()
+}
+
+
+#[debug_handler]
+/*pub async fn retrieve_secret(
+    Extension(redis_connection): Extension<MultiplexedConnection>,
+    Path(uuid): Path<String>,
+    //Query(params): Query<HashMap<String, String>>,
+    ) -> impl IntoResponse {
+
+    let output = format!("Secret:\n{}\n{}", value,uuid);
+    (StatusCode::OK, output).into_response()  //temp
+}*/
+pub async fn retrieve_secret(
+    Extension(redis_connection): Extension<MultiplexedConnection>,
+    Path(uuid_str): Path<String>, // Extract the UUID string 
+) -> impl IntoResponse {
+
+    // Attempt to parse the UUID
+    let uuid = match Uuid::parse_str(&uuid_str) {
+        Ok(uuid) => uuid,
+        Err(_) => return (StatusCode::BAD_REQUEST, "Invalid UUID format").into_response(),
+    };
+
+    // Look up value in Redis
+    let value = redis_client::get_value_with_retries(&mut redis_connection.clone(), &uuid.to_string()).await;
+    match value {
+        Ok(value) => {
+            let output = format!("Secret:\n{}\n{}\n", value, uuid);
+            
+            // Decode Base64
+            // TODO: improve with base64::URL_SAFE_NO_PAD and stop using deprecated function
+            let decoded_secret = base64::decode(&value); 
+            
+            match decoded_secret {
+                Ok(decoded) => (StatusCode::OK, decoded).into_response(),
+                Err(_) => (StatusCode::BAD_REQUEST, "Invalid Base64").into_response(),
+            }
+        },
+        Err(status) => (StatusCode::NOT_FOUND, "Secret not found").into_response()
+    }
+}
+
+// Catch all handlers
+
 pub async fn not_found() -> impl IntoResponse {
     (StatusCode::NOT_FOUND, "404, Not Found").into_response()
+}
+
+
+// Debug stuff
+// expand?
+pub async fn connection_handler(ConnectInfo(remote_addr): ConnectInfo<SocketAddr>) -> impl IntoResponse {
+    // Extract client's IP Address
+    let client_ip = match remote_addr.ip() {
+        IpAddr::V4(ip) => ip.to_string(),
+        IpAddr::V6(ip) => ip.to_string(),
+    };
+
+    format!("Hello from client: {}", client_ip)
+}
+
+// Headermap example for debugging
+// https://docs.rs/axum/latest/axum/extract/index.html#the-order-of-extractors
+#[allow(dead_code)]
+pub async fn header_handler(headers: HeaderMap) -> impl IntoResponse {
+    // Access a specific header
+    //if let Some(content_type) = headers.get("content-type") {
+        //format!("Content-Type: {}", content_type.to_str().unwrap_or("unknown"))
+    //} else {format!"No Content-Type header found".to_string();}
+    let mut output = String::new();
+
+    for (key, value) in headers.iter() {
+        let _ = writeln!(&mut output, "{}: {}", key, value.to_str().unwrap_or("invalid value")); 
+    }
+
+    output
 }
 
 /* // TODO: implement this to do fault injection and test error handling middleware

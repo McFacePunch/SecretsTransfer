@@ -1,30 +1,45 @@
 
 use std::time::Duration;
 use redis::{Client, RedisError};
-use redis::AsyncCommands;
+
+use redis::aio::MultiplexedConnection;
 
 extern crate redis;
 
 
-pub async fn connect_to_redis(redis_url: &str) -> Result<Client, RedisError> {
-    let client = Client::open(redis_url)?;
-    let mut con: redis::aio::MultiplexedConnection = client.get_multiplexed_async_connection().await?;
+pub async fn connect_to_redis(redis_url: &str) -> MultiplexedConnection {
+    let client = Client::open(redis_url);
+    //let mut con: MultiplexedConnection = client.get_multiplexed_async_connection().await;
+    let mut con: MultiplexedConnection = match client {
+        Ok(client) => client.get_multiplexed_async_connection().await.unwrap(),
+        Err(e) => {
+            tracing::debug!("Exiting due to Redis error:\n{}", e);
+            panic!("Exiting due to Redis error:\n{}", e);
+        }
+    };
 
-    // Test Connectivity (asynchronous)
-    let _: () = con.get("test_key").await?; 
+    // do ping to test connection
+    let value: String = redis::cmd("PING").query_async(&mut con).await.unwrap();
+    tracing::debug!("Redis PING response: {:?}", value);
+    
+    // examples
+    //con.set(key, value).await?;
+    //let value = con.get(key).await?;
 
-    Ok(client) 
+    con
 }
 
+
+
 // Function to retrieve a value from Redis
-pub async fn get_value_from_redis(con: &mut redis::aio::MultiplexedConnection, key: &str) -> Result<String, RedisError> {
+pub async fn get_value_from_redis(con: &mut MultiplexedConnection, key: &str) -> Result<String, RedisError> {
     let value: String = redis::cmd("GET").arg(key).query_async(con).await?;
     Ok(value)
 }
 
 // Improve this with one function to retry both get and set
 pub async fn get_value_with_retries(
-    con: &mut redis::aio::MultiplexedConnection,
+    con: &mut MultiplexedConnection,
     key: &str,
 ) -> Result<String, RedisError> {
     let retry_delay = Duration::from_secs(1);
@@ -46,8 +61,7 @@ pub async fn get_value_with_retries(
 
 
 
-
-pub async fn set_value_in_redis(con: &mut redis::aio::MultiplexedConnection, key: &str, value: &str) -> Result<(), RedisError> {
+pub async fn set_value_in_redis(con: &mut MultiplexedConnection, key: &str, value: &str) -> Result<(), RedisError> {
     redis::cmd("SET")
         .arg(key)
         .arg(value)
@@ -58,7 +72,7 @@ pub async fn set_value_in_redis(con: &mut redis::aio::MultiplexedConnection, key
 }
 
 pub async fn set_value_with_retries(
-    con: &mut redis::aio::MultiplexedConnection,
+    con: &mut MultiplexedConnection,
     key: &str, 
     value: &str, 
 ) -> Result<(), RedisError> {
