@@ -46,6 +46,8 @@ mod api;
 mod custom_middleware;
 mod redis_client;
 
+mod tests;
+
 #[derive(Clone)]
 struct RedisState {
     pub _conn: Arc<MultiplexedConnection>, 

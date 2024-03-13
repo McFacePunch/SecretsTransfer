@@ -173,15 +173,6 @@ pub async fn store_secret_post(
 
 
 #[debug_handler]
-/*pub async fn retrieve_secret(
-    Extension(redis_connection): Extension<MultiplexedConnection>,
-    Path(uuid): Path<String>,
-    //Query(params): Query<HashMap<String, String>>,
-    ) -> impl IntoResponse {
-
-    let output = format!("Secret:\n{}\n{}", value,uuid);
-    (StatusCode::OK, output).into_response()  //temp
-}*/
 pub async fn retrieve_secret(
     Extension(redis_connection): Extension<MultiplexedConnection>,
     Path(uuid_str): Path<String>, // Extract the UUID string 

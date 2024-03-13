@@ -22,3 +22,24 @@ uuid = {version = "1.7.0", features = ["v4", "fast-rng", "macro-diagnostics",]}
 base64 = "0.22.0"
 validator = { version = "0.17", features = ["derive"] } 
 
+
+[dev-dependencies]
+serde_urlencoded = "0.7"
+axum-test = "14.3"
+axum = { version = "0.7", features = ["tokio", "macros"] }
+axum-server = { version = "0.6", features = ["tls-rustls"] }
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+serde = { version = "1.0.197", features = ["derive"] }
+clap = { version = "4.0", features = ["derive"] } 
+serde_json = "1.0.114"
+rustls = "0.22.2"
+tokio-rustls = "0.25.0"
+tower = "0.4.13"
+tower-http = "0.5.2"
+http-body-util = "0.1.0"
+redis = { version = "0.25.0", features = ["tokio-comp"]  }
+uuid = {version = "1.7.0", features = ["v4", "fast-rng", "macro-diagnostics",]}
+base64 = "0.22.0"
+validator = { version = "0.17", features = ["derive"] } 
