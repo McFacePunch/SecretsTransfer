@@ -21,6 +21,7 @@ redis = { version = "0.25.0", features = ["tokio-comp"]  }
 uuid = {version = "1.7.0", features = ["v4", "fast-rng", "macro-diagnostics",]}
 base64 = "0.22.0"
 validator = { version = "0.17", features = ["derive"] } 
+rusqlite = "0.31.0"
 
 
 [dev-dependencies]
@@ -40,6 +41,6 @@ tower = "0.4.13"
 tower-http = "0.5.2"
 http-body-util = "0.1.0"
 redis = { version = "0.25.0", features = ["tokio-comp"]  }
-uuid = {version = "1.7.0", features = ["v4", "fast-rng", "macro-diagnostics",]}
+uuid = {version = "1.7.0", features = ["v4", "v7", "fast-rng", "macro-diagnostics",]}
 base64 = "0.22.0"
 validator = { version = "0.17", features = ["derive"] } 

@@ -10,7 +10,14 @@ SERVER_IMAGE = $(PREFIX)-server:latest
 # Default target
 all: debug release release_x86
 
-debug: compile_debug container
+debug: 
+	export RUSTFLAGS="$RUSTFLAGS -Funsafe-code" cargo check
+	compile_debug container
+
+# Run Geiger then others
+test:
+	cargo geiger
+
 
 release: compile_release container
 

@@ -1,3 +1,4 @@
+#![forbid(unsafe_code)]
 // TODO: Add a proper license
 // graceful shutdown? https://github.com/tokio-rs/axum/blob/main/examples/tls-graceful-shutdown/src/main.rs
 // client tls? https://cloud.tencent.com/developer/article/1900692
@@ -9,9 +10,10 @@
 use std::{
     net::SocketAddr,
     path::PathBuf,
-    fs,
     io,
     sync::Arc,
+    sync::Mutex,
+    collections::HashMap,
 };
 
 // External crate imports
@@ -24,10 +26,9 @@ use axum::{
 use axum_server::tls_rustls::RustlsConfig;
 
 use clap::Parser;
+use tower::layer;
 
 use core::panic;
-
-use serde::Deserialize;
 
 use tracing;
 use tracing_subscriber::{
@@ -45,6 +46,9 @@ mod other;
 mod api;
 mod custom_middleware;
 mod redis_client;
+mod database;
+
+mod config;
 
 mod tests;
 
@@ -53,33 +57,10 @@ struct RedisState {
     pub _conn: Arc<MultiplexedConnection>, 
 }
 
-#[allow(dead_code)]
-#[derive(Deserialize,Debug)]
-struct Config {
-    //webserver
-    listen_address: String,
-    http_port: u16,
-    https_port: u16,
-
-    http_redirection: bool,
-
-    //ssl
-    cert_path: String,
-    key_path: String,
-
-    //redis
-    redis_server: String,
-    redis_port: u16,
-
-    //database
-    db_path: String,
-    db_name: String,
-
-    //debug
-    debug_level: String,
-    debug_requests: bool,
-    debug_log_path: String,
+struct DatabaseLayer {
+    db: Arc<Mutex<HashMap<String, i32>>>,
 }
+
 
 #[allow(dead_code)]
 #[derive(Clone, Copy)]
@@ -104,7 +85,7 @@ struct Args {
 
 #[tokio::main]
 async fn main() {
-    let args = Args::parse(); // Parse command line arguments
+    let args = Args::parse();
 
     // Load the configuration file
     if args.config.is_empty() {
@@ -114,42 +95,52 @@ async fn main() {
     other::ascii_art(); // eh why not?
 
     tracing::info!("Using configuration file: {}", args.config);
-    let config = load_config(&args.config).unwrap();
-    //println!("Config loaded:\n{:?}", config);
+    let config: config::Config = config::load_config(&args.config).unwrap();
 
     setup_logging(&config);
 
-    // Database stuff
-    //TODO
+    /* Reference Implemnation Delete Later
+    // Initialize the KV database
+    let kv_db = init_kv_db(&config::Config::default()).await.unwrap();
 
+    // Create a DBStates struct
+    let db_states = DBStates {
+        value_store: Some(Arc::new(Mutex::new(ValueStore::InMemory(kv_db)))),
+        user_db: None,
+    };
 
+    // Create a Router
+    let router = Router::new().route("/", get(handler));
 
-    // Redis
-    let connection_string = format!("{}:{}", config.redis_server, config.redis_port);
-    tracing::debug!("Redis server: {}", connection_string);
+    // Add the DBStates to the router's extensions
+    let app = router.layer(Extension(db_states));
+    */
 
-    let shared_redis_client = redis_client::connect_to_redis(&connection_string).await;
-    /*match shared_redis_client {
-        Ok(_) => {tracing::debug!("Connected to Redis successfully!");}
-        Err(e) => {panic!("Exiting due to Redis error:\n{}", e);}
-    }*/
+    //let mut kv_db = database::init_kv_db(&config).await.unwrap();
 
-    // Make a sharable state for the Redis connection
-    //let shared_state = RedisState { _conn: Arc::new(shared_redis_client) };
-    //let redis_connection: Arc<Mutex<MultiplexedConnection>> = Arc::new(Mutex::new(/* your connection here */));
+    tracing::debug!("Creating db_sate");
+    let db_state = database::DBStates {
+        //value_store: Some(Arc::new(Mutex::new(database::StorageEnum::InMemory(kv_db)))),
+        value_store: database::init_kv_db(&config).await.unwrap(),
+        user_db: database::init_user_db(&config).await.unwrap(),
+    };
 
-    
+    let arc_db_state: Arc<Mutex<database::DBStates>> = Arc::new(Mutex::new(db_state));
+    //let arc_db_state = Extension(Arc::new(Mutex::new(db_state)));
+    //tracing::debug!("
+
 
     // uuid <--> Secrets routes
     let secrets_routes = Router::new()
         //.route("/store_secret", get(|State(state): State<MultiplexedConnection>|top_level_handler_fn!(get, api::store_secret)))
-        .route("/store_secret", get(api::store_secret))
+        .route("/store_secret", get(api::store_secret2))
         //.route("/retrieve_secret", get(api::retrieve_secret))
-        .route("/retrieve_secret/:uuid", get(api::retrieve_secret))
+        .route("/retrieve_secret/:uuid", get(api::retrieve_secret2))
         .route("/*any", get(api::not_found))
-        .layer(Extension(shared_redis_client)); // create a layer for enforced auth
-        //.with_state(shared_redis_client.clone());
-
+        //.layer(Extension(db_state));// create a layer for enforced auth
+        //.layer(Extension(db_state))
+        .layer(Extension(arc_db_state));
+        
     let webserver = Router::new()
         .route("/favicon.ico", get(api::favicon))
         .route("/", get(api::root_handler))
@@ -202,13 +193,7 @@ async fn main() {
         .unwrap();
 }
 
-fn load_config(config_file_path: &str) -> Result<Config, Box<dyn std::error::Error>> {
-    let file_content = fs::read_to_string(config_file_path)?;
-    let config: Config = serde_json::from_str(&file_content)?;
-    Ok(config)
-}
-
-fn setup_logging(config: &Config) {
+fn setup_logging(config: &config::Config) {
     // Parse the log level from the config
     let log_level = match config.debug_level.to_lowercase().as_str() {
         "error" => LevelFilter::ERROR,
