@@ -1,3 +1,4 @@
+#![forbid(unsafe_code)]
 // TODO: Add a proper license
 // graceful shutdown? https://github.com/tokio-rs/axum/blob/main/examples/tls-graceful-shutdown/src/main.rs
 // client tls? https://cloud.tencent.com/developer/article/1900692
@@ -5,102 +6,49 @@
 // TODO: Consider feature flags?
 
 
-#![allow(unused_imports)]
-
-use axum::{
-    extract::Host,
-    handler::HandlerWithoutStateExt,
-    http::{StatusCode, Uri},
-    response::Redirect,
-    routing::get,
-    routing::post,
-    BoxError, Router,
+// Standard library imports
+use std::{
+    io, 
+    net::{IpAddr, SocketAddr}, 
+    path::PathBuf, 
+    str::FromStr, 
+    sync::{Arc, Mutex}
 };
-use axum::{ response::IntoResponse,};
-use axum::middleware::from_fn;
-use axum::middleware;
-use axum::error_handling::HandleErrorLayer;
-use axum::Extension;
 
+// External crate imports
+//{FromRequest, Host}
+use axum::{
+    extract::Host, handler::HandlerWithoutStateExt, http::{StatusCode, Uri},
+    middleware, response::Redirect, routing::{get, post}, BoxError, Extension, Router,
+};
 use axum_server::tls_rustls::RustlsConfig;
 
-use rustls::{
-    server::{NoClientAuth},
-    sign::CertifiedKey,
-    CipherSuite, RootCertStore, SupportedCipherSuite,
-};
-
-use tower::ServiceBuilder;
-use tokio::time::error;
-//use tower_http::{add_extension::AddExtensionLayer, trace::TraceLayer};
-
-use serde::{Deserialize, Deserializer};
-
 use clap::Parser;
+use tokio::sync::RwLock;
 
 use core::panic;
-use std::{net::SocketAddr, net::IpAddr, path::PathBuf, str::FromStr, sync::Arc};
-use std::fs;
-use std::io;
-use std::time::Duration;
 
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-use tracing_subscriber::fmt;
-use tracing_subscriber::prelude::*;
-use tracing_subscriber::filter::LevelFilter;
-use tracing::{debug, error, info, trace};
-
-use std::convert::TryFrom;
-use std::fs::File;
-use std::io::BufReader;
-
-use tokio::net::TcpStream;
-use tokio_rustls::{
-    TlsAcceptor,
-    TlsConnector,
-    rustls::{self},
-    client::TlsStream as ClientTlsStream,
+use tracing;
+use tracing_subscriber::{
+    filter::LevelFilter,
+    layer::SubscriberExt, 
+    prelude::*,
 };
-use tokio::net::TcpListener; 
+use tracing_subscriber::fmt;
+
+use redis::aio::MultiplexedConnection;
+
+// Local imports
 
 mod other;
-use other::print_secrets_transfer_with_lock_ascii;
-use other::ascii_art;
-
 mod api;
 mod custom_middleware;
-mod redis;
-//use api; //::{login_handler, logout_handler, status_handler, not_found};
+mod redis_client;
+mod database;
 
-//use axum::prelude::*;
-//use axum::middleware::Logger;
+mod config;
 
-#[allow(dead_code)]
-#[derive(Deserialize,Debug)]
-struct Config {
-    //webserver
-    listen_address: String,
-    http_port: u16,
-    https_port: u16,
-
-    http_redirection: bool,
-
-    //ssl
-    cert_path: String,
-    key_path: String,
-
-    //redis
-    redis_server: String,
-
-    //database
-    db_path: String,
-    db_name: String,
-
-    //debug
-    debug_level: String,
-    debug_requests: bool,
-    debug_log_path: String,
-}
+mod tests;
 
 #[allow(dead_code)]
 #[derive(Clone, Copy)]
@@ -119,37 +67,83 @@ struct Args {
 
 #[tokio::main]
 async fn main() {
-    let args = Args::parse(); // Parse command line arguments
+    let args = Args::parse();
 
     // Load the configuration file
     if args.config.is_empty() {
         panic!("[!] No configuration file provided");
     }
 
-    ascii_art(); // eh why not?
+    other::ascii_art(); // eh why not?
 
     tracing::info!("Using configuration file: {}", args.config);
-    let config = load_config(&args.config).unwrap();
-    //println!("Config loaded:\n{:?}", config);
+    let config: config::Config = config::load_config(&args.config).unwrap();
 
     setup_logging(&config);
 
-    /*let redis_status = match redis::check_redis_connection() {
-        Ok(_) =>{
-            tracing::debug!("Connected to Redis successfully!")
-        } 
-        Err(e) => {
-            tracing::debug!("Could not connect to Redis: {}", e);
-            panic!("Could not connect to Redis: {}", e)
-        }
-    };*/
+    tracing::debug!("Creating db_sate");
 
-    //remove this
-    tracing::debug!("Redis server: {}", config.redis_server);
-    tracing::debug!("Database path: {}", config.db_path);
-    
-    // configure the ports used by the server, passed to http handler
-    let ports = Ports { //todo move to two args vs this setup
+    let value_store = database::init_kv_db(&config).await.unwrap();
+    let arc_value_store = Arc::new(value_store);
+
+    let arc_user_db = if config.users_enabled {
+        Some(Arc::new(database::init_user_db(&config).await.unwrap()))
+    } else {
+        None
+    };
+    //let arc_db_state: Arc<Mutex<database::DBStates>> = Arc::new(Mutex::new(db_state));
+    //let redis_pool = Arc::new(Pool::builder()...build()?);
+    let in_memory_map = database::init_kv_db(&config).await.unwrap();
+
+    // uuid <--> Secrets routes
+    let secrets_routes = Router::new()
+        //.route("/store_secret", get(|State(state): State<MultiplexedConnection>|top_level_handler_fn!(get, api::store_secret)))
+        .route("/store_secret", get(api::test_store_secret_get))
+        //.route("/store_secret", get(api::test_store_secret_get))
+        //.route("/retrieve_secret", get(api::retrieve_secret))
+        .route("/retrieve_secret/:uuid", get(api::test_retrieve_secret_get))
+        .route("/*any", get(api::not_found))
+        .layer(Extension(in_memory_map));
+
+
+    let user_routes = Router::new()
+        .route("/signup", get(api::signup_get_handler)) //.post(api::signup_post_handler))
+        //.route("/login", get(api::login_get_handler).post(api::login_post_handler))
+        .route("/logout", post(api::logout_handler))
+        .route("/*any", get(api::not_found))
+        //.layer(Extension(arc_user_db));
+        .layer(Extension(arc_user_db));
+        
+    let webserver = Router::new()
+        .route("/favicon.ico", get(api::favicon))
+        .route("/", get(api::root_handler))
+
+        //Secrets nesting
+        .nest("/secrets", secrets_routes)
+        
+        //Optional, User's nesting
+        .nest("/user", if config.users_enabled {
+            user_routes
+        } else {
+            Router::new().route("/*any", get(api::not_found))
+        })
+
+        // Debug/Info Routes
+        .route("/status", get(api::status_handler))
+        .route("/headers", get(api::header_handler))
+        .route("/connection", get(api::connection_handler))
+        //.route("/trigger_error", get(trigger_error)) // TODO: fault injection to test middleware
+        
+        // catch all handles and layers
+        .route("/*any", get(api::not_found))
+        .layer(middleware::from_fn(custom_middleware::print_request_response))
+        .layer(Extension(config.debug_requests));
+        //.layer(HandleErrorLayer::new(custom_middleware::handle_error)); // TODO: wrap all error via this handler middleware
+
+
+
+
+    let ports = Ports { //todo move to two args vs this setup?
         http: config.http_port,
         https: config.https_port,
     };
@@ -160,55 +154,26 @@ async fn main() {
         tokio::spawn(redirect_http_to_https(ports));
     }
 
-    // configure certificate and private key used by http(s) server
     let cert_path_buf = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(config.cert_path);
     let key_path_buf = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(config.key_path);
-
     tracing::info!("Using certificate at: {:?}", cert_path_buf);
     tracing::info!("Using private key at: {:?}", key_path_buf);
-
-    let webserver = Router::new()
-        .route("/favicon.ico", get(api::favicon))
-        .route("/", get(api::root_handler))
-        .route("/create_secret_url", get(api::create_secret_url) )
-        //.route("/retrieve_secret_url", get(api::retrieve_secret_url) )
-        //.route("/secret/:id", get(api::retrieve_secret) ) // todo use more CRUD
-
-        .route("/signup", get(api::signup_get_handler).post(api::signup_post_handler))
-        //.route("/login", post(api::login_handler))
-        //.route("/logout", post(api::logout_handler))
-
-        // Debug Routes
-        // fault injection to test middleware later
-        .route("/status", get(api::status_handler))
-        .route("/headers", get(api::header_handler))
-        .route("/connection", get(api::connection_handler))
-        //.route("/trigger_error", get(trigger_error))
-        
-        // catch all handles and layers
-        .route("/*any", get(api::not_found))//;
-        .layer(middleware::from_fn(custom_middleware::print_request_response))//;
-        .layer(Extension(config.debug_requests));
-        //.layer(HandleErrorLayer::new(custom_middleware::handle_error));
 
     let tls_config = RustlsConfig::from_pem_file(cert_path_buf, key_path_buf).await.unwrap();
 
     // run https server
-    let addr = SocketAddr::from(([127, 0, 0, 1], ports.https));
+    let addr = SocketAddr::new(
+        IpAddr::from_str(config.listen_address.as_str()).unwrap(),
+        config.https_port,
+    );
     tracing::info!("listening on {}", addr);
     axum_server::bind_rustls(addr, tls_config)
-        .serve(webserver.into_make_service_with_connect_info::<SocketAddr>())//.into_make_service())
+        .serve(webserver.into_make_service_with_connect_info::<SocketAddr>())
         .await
         .unwrap();
 }
 
-fn load_config(config_file_path: &str) -> Result<Config, Box<dyn std::error::Error>> {
-    let file_content = fs::read_to_string(config_file_path)?;
-    let config: Config = serde_json::from_str(&file_content)?;
-    Ok(config)
-}
-
-fn setup_logging(config: &Config) {
+fn setup_logging(config: &config::Config) {
     // Parse the log level from the config
     let log_level = match config.debug_level.to_lowercase().as_str() {
         "error" => LevelFilter::ERROR,

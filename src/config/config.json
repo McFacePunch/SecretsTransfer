@@ -1,0 +1,26 @@
+{
+    "listen_address": "0.0.0.0",
+    "http_port": 8080,
+    "https_port": 8443,
+
+    "http_redirection": true,
+
+    "cert_path": "src/config/cert.pem",
+    "key_path": "src/config/key.pem",
+
+    "redis_enabled": false,
+    "redis_server": "redis://127.0.0.1",
+    "redis_port": 6379,
+
+    "users_enabled": false,
+    "db_persist": false,
+    "db_remote": false,
+    "db_host": "127.0.0.1",
+    "db_port": 3306,
+    "db_path": "path/to/db/file",
+    "db_name": "db_name",
+
+    "debug_level": "info",
+    "debug_requests": false,
+    "debug_log_path": "debug.log"
+}

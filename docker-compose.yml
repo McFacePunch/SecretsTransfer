@@ -4,21 +4,32 @@ services:
   web:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: secretstransfer.containerfile
+    mem_limit: 512M
+    restart: "always"
     ports:
-      - "8443:8443"
+      - "443:8443"
     environment:
       - REDIS_URL=redis://redis:6379
     depends_on:
       - redis
+    networks:
+      - internal
+      - external
 
   redis:
+    build:
+      context: .
+      dockerfile: redis.containerfile
     image: "redis:latest"
-    ports:
-      - "6379:6379"
+    mem_limit: 512M
+    restart: "always"
     networks:
-      - private_net
+      - internal
 
 networks:
-  private_net:
+  internal:
+    driver: bridge
+    internal: true
+  external:
     driver: bridge

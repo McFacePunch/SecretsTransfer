@@ -1,19 +1,4 @@
 
-# Service Account for sidecar
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: tsunami-manager-sa
-  annotations:
-    eks.amazonaws.com/role-arn: "arn:aws:iam::258193713417:role/eksctl-tsunami-cluster-addon-iamserviceaccoun-Role1-vltL5IuJ1Ndd" # TODO Update
-  namespace: default
-
-
-
-
-
-
-
 ---
 # Deployment for web application container
 apiVersion: apps/v1 
@@ -36,7 +21,7 @@ spec:
         image: 258193713417.dkr.ecr.eu-north-1.amazonaws.com/tsunami-runner:latest # TODO Update
         env:
         - name: WEBSERVICE_SERVICE_HOST
-          value: web-application-service.default.svc.cluster.local
+          value: web-service.default.svc.cluster.local
         - name: WEBSERVICE_SERVICE_PORT
           value: "8080"
         resources:
@@ -68,12 +53,6 @@ spec:
 
 
 
-
-
-
-
-
-
 ---
 # Deployment definition for  redis
 apiVersion: apps/v1
@@ -96,9 +75,9 @@ spec:
       - name: runner
         image: 258193713417.dkr.ecr.eu-north-1.amazonaws.com/tsunami-runner:latest # TODO Update
         env:
-        - name: MANAGER_SERVICE_HOST
-          value: manager-service.default.svc.cluster.local
-        - name: MANAGER_SERVICE_PORT
+        - name: REDIS_HOST
+          value: redis.default.svc.cluster.local
+        - name: REDIS_PORT
           value: "8080"
         resources:
           limits:
@@ -124,7 +103,6 @@ spec:
       targetPort: 443
       nodePort: 8443 
   type: LoadBalancer 
-
 
 
 
@@ -174,5 +152,3 @@ metadata:
 spec:
   selector:
     app: postgres-service-container
-
-
