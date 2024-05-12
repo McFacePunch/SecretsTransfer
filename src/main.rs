@@ -8,12 +8,11 @@
 
 // Standard library imports
 use std::{
-    net::SocketAddr,
-    path::PathBuf,
-    io,
-    sync::Arc,
-    sync::Mutex,
-    collections::HashMap,
+    io, 
+    net::{IpAddr, SocketAddr}, 
+    path::PathBuf, 
+    str::FromStr, 
+    sync::{Arc, Mutex}
 };
 
 // External crate imports
@@ -21,12 +20,11 @@ use std::{
 use axum::{
     extract::Host, handler::HandlerWithoutStateExt, http::{StatusCode, Uri},
     middleware, response::Redirect, routing::{get, post}, BoxError, Extension, Router,
-    extract::State
 };
 use axum_server::tls_rustls::RustlsConfig;
 
 use clap::Parser;
-use tower::layer;
+use tokio::sync::RwLock;
 
 use core::panic;
 
@@ -52,27 +50,11 @@ mod config;
 
 mod tests;
 
-#[derive(Clone)]
-struct RedisState {
-    pub _conn: Arc<MultiplexedConnection>, 
-}
-
-struct DatabaseLayer {
-    db: Arc<Mutex<HashMap<String, i32>>>,
-}
-
-
 #[allow(dead_code)]
 #[derive(Clone, Copy)]
 struct Ports {
     http: u16,
     https: u16,
-}
-
-
-#[derive(Clone, Default)]
-struct DatabaseState {
-    //pub connection: T,
 }
 
 #[derive(Parser, Debug)]
@@ -99,59 +81,52 @@ async fn main() {
 
     setup_logging(&config);
 
-    /* Reference Implemnation Delete Later
-    // Initialize the KV database
-    let kv_db = init_kv_db(&config::Config::default()).await.unwrap();
-
-    // Create a DBStates struct
-    let db_states = DBStates {
-        value_store: Some(Arc::new(Mutex::new(ValueStore::InMemory(kv_db)))),
-        user_db: None,
-    };
-
-    // Create a Router
-    let router = Router::new().route("/", get(handler));
-
-    // Add the DBStates to the router's extensions
-    let app = router.layer(Extension(db_states));
-    */
-
-    //let mut kv_db = database::init_kv_db(&config).await.unwrap();
-
     tracing::debug!("Creating db_sate");
-    let db_state = database::DBStates {
-        //value_store: Some(Arc::new(Mutex::new(database::StorageEnum::InMemory(kv_db)))),
-        value_store: database::init_kv_db(&config).await.unwrap(),
-        user_db: database::init_user_db(&config).await.unwrap(),
+
+    let value_store = database::init_kv_db(&config).await.unwrap();
+    let arc_value_store = Arc::new(value_store);
+
+    let arc_user_db = if config.users_enabled {
+        Some(Arc::new(database::init_user_db(&config).await.unwrap()))
+    } else {
+        None
     };
-
-    let arc_db_state: Arc<Mutex<database::DBStates>> = Arc::new(Mutex::new(db_state));
-    //let arc_db_state = Extension(Arc::new(Mutex::new(db_state)));
-    //tracing::debug!("
-
+    //let arc_db_state: Arc<Mutex<database::DBStates>> = Arc::new(Mutex::new(db_state));
+    //let redis_pool = Arc::new(Pool::builder()...build()?);
+    let in_memory_map = database::init_kv_db(&config).await.unwrap();
 
     // uuid <--> Secrets routes
     let secrets_routes = Router::new()
         //.route("/store_secret", get(|State(state): State<MultiplexedConnection>|top_level_handler_fn!(get, api::store_secret)))
-        .route("/store_secret", get(api::store_secret2))
+        .route("/store_secret", get(api::test_store_secret_get))
+        //.route("/store_secret", get(api::test_store_secret_get))
         //.route("/retrieve_secret", get(api::retrieve_secret))
-        .route("/retrieve_secret/:uuid", get(api::retrieve_secret2))
+        .route("/retrieve_secret/:uuid", get(api::test_retrieve_secret_get))
         .route("/*any", get(api::not_found))
-        //.layer(Extension(db_state));// create a layer for enforced auth
-        //.layer(Extension(db_state))
-        .layer(Extension(arc_db_state));
+        .layer(Extension(in_memory_map));
+
+
+    let user_routes = Router::new()
+        .route("/signup", get(api::signup_get_handler)) //.post(api::signup_post_handler))
+        //.route("/login", get(api::login_get_handler).post(api::login_post_handler))
+        .route("/logout", post(api::logout_handler))
+        .route("/*any", get(api::not_found))
+        //.layer(Extension(arc_user_db));
+        .layer(Extension(arc_user_db));
         
     let webserver = Router::new()
         .route("/favicon.ico", get(api::favicon))
         .route("/", get(api::root_handler))
 
-        // redis route nesting
-        .nest("/secrets", secrets_routes)   
-
-        // User routes
-        .route("/signup", get(api::signup_get_handler).post(api::signup_post_handler))
-        .route("/login", post(api::login_handler))
-        .route("/logout", post(api::logout_handler))
+        //Secrets nesting
+        .nest("/secrets", secrets_routes)
+        
+        //Optional, User's nesting
+        .nest("/user", if config.users_enabled {
+            user_routes
+        } else {
+            Router::new().route("/*any", get(api::not_found))
+        })
 
         // Debug/Info Routes
         .route("/status", get(api::status_handler))
@@ -164,6 +139,8 @@ async fn main() {
         .layer(middleware::from_fn(custom_middleware::print_request_response))
         .layer(Extension(config.debug_requests));
         //.layer(HandleErrorLayer::new(custom_middleware::handle_error)); // TODO: wrap all error via this handler middleware
+
+
 
 
     let ports = Ports { //todo move to two args vs this setup?
@@ -185,10 +162,13 @@ async fn main() {
     let tls_config = RustlsConfig::from_pem_file(cert_path_buf, key_path_buf).await.unwrap();
 
     // run https server
-    let addr = SocketAddr::from(([127, 0, 0, 1], ports.https));
+    let addr = SocketAddr::new(
+        IpAddr::from_str(config.listen_address.as_str()).unwrap(),
+        config.https_port,
+    );
     tracing::info!("listening on {}", addr);
     axum_server::bind_rustls(addr, tls_config)
-        .serve(webserver.into_make_service_with_connect_info::<SocketAddr>())//.into_make_service())
+        .serve(webserver.into_make_service_with_connect_info::<SocketAddr>())
         .await
         .unwrap();
 }

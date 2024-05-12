@@ -27,7 +27,8 @@ pub_struct!( Config {
     redis_server: String,
     redis_port: u16,
 
-    //database
+    //user database
+    users_enabled: bool,
     db_persist: bool,
     db_remote: bool,
     db_host: String,

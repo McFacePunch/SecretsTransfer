@@ -6,6 +6,7 @@ use std::{
     net::{IpAddr, SocketAddr}, fmt::Write,
     collections::HashMap,
     sync::{Arc, Mutex},
+    error::Error,
 };
 
 use axum::{
@@ -23,12 +24,14 @@ use redis::aio::MultiplexedConnection;
 use serde::Deserialize;
 use serde::Serialize;
 
-use tokio::fs::read;
+use tokio::{fs::read, io::AsyncReadExt};
 use uuid::Uuid;
 use validator::Validate; 
 use base64;
 
 use crate::config;
+
+use crate::database::{Storage, StorageEnum};
 
 #[derive(Deserialize, Validate)]
 struct SecretData {
@@ -46,8 +49,9 @@ pub struct SignupForm {
 }
 
 pub async fn favicon() -> Result<Response<Body>, Infallible> {
-    // TODO: add this to the config
-    // TODO check for file existence and error?
+    // TODO: add this to the config?
+    // TODO: check for file existence and error?
+    // TODO:cache the file to prevent disk reads
     let favicon_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("./images/favicon_io/favicon.ico");
     let bytes = match read(favicon_path).await {
         Ok(bytes) => bytes,
@@ -70,10 +74,12 @@ pub async fn status_handler() -> impl IntoResponse {
     (StatusCode::OK, "Service is running").into_response()
 }
 
+// TODO implement this
 pub async fn login_handler() -> impl IntoResponse {
     (StatusCode::OK, "Login Page").into_response()
 }
 
+// TODO implement this
 pub async fn logout_handler() -> impl IntoResponse {
     (StatusCode::OK, "Logout Page").into_response()
 }
@@ -125,7 +131,9 @@ pub async fn signup_get_handler() -> impl IntoResponse {
     Html(html) // returns a 200 as well
 }
 
-pub async fn signup_post_handler(Form(signup_data): Form<SignupForm>) -> StatusCode {
+pub async fn signup_post_handler(Form(signup_data): Form<SignupForm>,
+Extension(db): Extension<Arc<Mutex<database::StorageEnum>>>
+) -> StatusCode {
     // 1. Validate the email and password (format, uniqueness, etc.)
     // 2. Hash the password securely (never store plain text passwords)
     // 3. Store the user data in a database
@@ -135,7 +143,9 @@ pub async fn signup_post_handler(Form(signup_data): Form<SignupForm>) -> StatusC
         Ok(_) => {
             tracing::info!("Received a valid signup request for user: {}", form.email);
 
+            // TODO
             // if user exists bail with error
+
             // else create
             // return 201 or redirect to login?
             //redirect_to_login().await;
@@ -152,172 +162,154 @@ pub async fn signup_post_handler(Form(signup_data): Form<SignupForm>) -> StatusC
 
 
 
-
-
-pub async fn store_secret(Extension(db): Extension<Arc<Mutex<database::DBStates>>>) -> impl IntoResponse {
-    let secret_uuid = database::get_uuid();
-
-    let base_url = "https://localhost:8443/secrets/retrieve_secret/";
-    let secret_url = format!("{}{}", base_url, secret_uuid);
-
-    {
-        let db = &mut db.lock().unwrap();
-
-        match &mut db.value_store {
-            database::StorageEnum::InMemory(map) => {
-                // Insert directly into the map without cloning.
-                map.insert(secret_uuid.clone(), secret_url.clone());
-                tracing::info!("Stored secret with UUID: {}", secret_uuid);
-                for (key, value) in map.iter() {
-                    tracing::info!("KEY VALUE !!!!!!!!!!!!!!! {}: {}", key, value);
-                }
-            },
-
-            database::StorageEnum::ExternalDB(ref mut redis_connection) => {
-                redis_client::get_or_set_value_with_retries(
-                    RedisOperation::Set, 
-                    redis_connection, 
-                    &secret_uuid, 
-                    Some(&secret_url)
-                ).await.unwrap();
-                tracing::debug!("NO OP ExternalDB")
-            },
-
-            database::StorageEnum::None => {
-                tracing::debug!("No storage defined.");
-            }
-        }
-    } // Lock is automatically released here
-
-    (StatusCode::OK, secret_url).into_response()
+async fn get_value(storage: &StorageEnum, key: &str) -> Result<Option<String>, Box<dyn Error>> {
+    match storage {
+        StorageEnum::InMemory(map) => map.get(key).await,
+        StorageEnum::Redis(pool) => pool.get(key).await,
+        //StorageEnum::NoSQLDB(conn) => conn.execute("SELECT value FROM table WHERE key = ?", [key]),
+        StorageEnum::None => Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, "No database available"))),
+    }
 }
 
+async fn set_value(storage: &StorageEnum, key: &str, value: &str) -> Result<(), Box<dyn Error>> {
+    match storage {
+        StorageEnum::InMemory(map) => map.set(key, value).await,
+        StorageEnum::Redis(pool) => pool.set(key, value).await,
+        //StorageEnum::NoSQLDB(conn) => conn.execute("INSERT INTO table (key, value) VALUES (?, ?)", [key, value]),
+        StorageEnum::None => Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, "No database available"))),
+    }
+}
 
-/* 
-pub async fn store_secret(
-    Extension(db): Extension<Arc<Mutex<database::DBStates>>>,
+pub async fn test_store_secret_get(
+    Extension(db): Extension<database::StorageEnum>,
 ) -> impl IntoResponse {
     let secret_uuid = database::get_uuid();
 
     let base_url = "https://localhost:8443/secrets/retrieve_secret/";
     let secret_url = format!("{}{}", base_url, secret_uuid);
 
-    {
-        let mut db = db.lock().unwrap(); // Acquire the lock on the database state.
-        let mut hashtable = hashtable.lock().unwrap().value_store;
+    //let value = "Ima test value value, im a test test value value";
 
-        match &mut db.value_store {
-            database::StorageEnum::InMemory(map) => {
-                // Insert directly into the map without cloning.
-                map.insert(secret_uuid.clone(), secret_url.clone());
-                tracing::info!("Stored secret with UUID: {}", secret_uuid);
-                for (key, value) in map.iter() {
-                    tracing::info!("KEY VALUE !!!!!!!!!!!!!!! {}: {}", key, value);
-                }
-            },
-            database::StorageEnum::ExternalDB(redis_connection) => {
-                // Assuming `redis_client::get_or_set_value_with_retries` is an async function you have defined.
-                redis_client::get_or_set_value_with_retries(
-                    RedisOperation::Set, 
-                    redis_connection, 
-                    &secret_uuid, 
-                    Some(&secret_url)
-                ).await.unwrap();
-            },
-            database::StorageEnum::None => {
-                tracing::debug!("No storage defined.");
-            }
-        }
-    } // Lock is automatically released here
-
-    (StatusCode::OK, secret_url).into_response()
-}
- */
-
-
-pub async fn retrieve_secret(
-    Path(uuid): Path<String>, 
-    Extension(db): Extension<Arc<Mutex<database::DBStates>>>,
-) -> impl IntoResponse {
-    {
-        let db = &mut db.lock().unwrap();
-
-        match &mut db.value_store {
-            database::StorageEnum::InMemory(mapp) => {
-                let map = mapp.clone();
-                let output = map.get(&uuid).unwrap_or(&"HT Secret not found".to_string()).to_string(); 
-                
-                (StatusCode::OK, output.to_string()).into_response()
-            }
-            database::StorageEnum::ExternalDB(ref mut redis_connection) => {
-                redis_client::get_value_with_retries(
-                    &mut redis_connection.clone(), 
-                    &uuid).await.map_or_else(
-                    |status| (StatusCode::NOT_FOUND, "EDB Secret not found").into_response(),
-                    |secret_url| (StatusCode::OK, secret_url).into_response(),
-                )
-            }
-            database::StorageEnum::None => (StatusCode::NOT_FOUND, "NO OP").into_response(),
+    let out = set_value(&db, &secret_uuid, &secret_url).await;
+    match out {
+        Ok(()) => {
+            tracing::debug!("Secret Stored!: {}", secret_url);
+            (StatusCode::OK, secret_url).into_response()
+        },
+        Err(e) => {
+            tracing::error!("Error storing secret: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR).into_response()
         }
     }
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-pub async fn store_secret2(Extension(hashtable): Extension<Arc<Mutex<database::DBStates>>>) -> impl IntoResponse {
+pub async fn test_store_secret_post(
+    Extension(db): Extension<database::StorageEnum>,
+) -> impl IntoResponse {
     let secret_uuid = database::get_uuid();
 
     let base_url = "https://localhost:8443/secrets/retrieve_secret/";
     let secret_url = format!("{}{}", base_url, secret_uuid);
 
-    {
-        let hashtable = &mut hashtable.lock().unwrap();
+    //let value = "Ima test value value, im a test test value value";
 
-        match &mut hashtable.value_store {
-            database::StorageEnum::InMemory(map) => {
-                // Insert directly into the map without cloning.
-                map.insert(secret_uuid.clone(), secret_uuid.clone());
-                
-                tracing::info!("Stored secret with UUID: {}", secret_uuid);
-                for (key, value) in map.iter() {
-                    tracing::info!("KEY VALUE !!!!!!!!!!!!!!! {}: {}", key, value);
-                }
-            },
-            // TODO fix this and the weird redis_connection issue
-            database::StorageEnum::ExternalDB(ref mut redis_connection) => {
-                // Assuming `redis_client::get_or_set_value_with_retries` is an async function you have defined.
-                // redis_client::get_or_set_value_with_retries(
-                //     RedisOperation::Set, 
-                //     &mut redis_connection, 
-                //     &secret_uuid, 
-                //     Some(&secret_url)
-                // ).await.unwrap();
-                tracing::debug!("NO OP ExternalDB")
-            },
-            database::StorageEnum::None => {
-                tracing::debug!("No storage defined.");
-            }
+    let out = set_value(&db, &secret_uuid, &secret_url).await;
+     match out {
+
+        Ok(()) => {
+            tracing::debug!("Secret Stored!: {}", secret_url);
+            (StatusCode::OK, secret_url).into_response()
+        },
+        Err(e) => {
+            tracing::error!("Error storing secret: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR).into_response()
         }
-    } // Lock is automatically released here
-
-    (StatusCode::OK, secret_url).into_response()
+    }
+    //(StatusCode::OK).into_response()
 }
 
+
+
+
+pub async fn test_retrieve_secret_get(
+    Extension(db): Extension<database::StorageEnum>,
+    Path(secret_uuid): Path<String>, 
+) -> impl IntoResponse {
+
+    let out = get_value(&db, &secret_uuid).await;
+    match out {
+
+        Ok(Some(secret_url)) => {
+            tracing::debug!("Retrieved secret: {}", secret_url);
+            (StatusCode::OK, secret_url).into_response()
+        },
+        Ok(None) => {
+            tracing::debug!("Secret not found");
+            (StatusCode::NOT_FOUND, "Secret not found").into_response()
+        },
+        Err(e) => {
+            tracing::error!("Error retrieving secret: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR).into_response()
+        }
+    }
+}
+
+/* 
+//pub async fn store_secret2(Extension(hashtable): Extension<Arc<Mutex<database::DBStates>>>) -> impl IntoResponse {
+pub async fn store_secret2(Extension(mut value_store): Extension<Arc<database::DB_Object<database::StorageEnum>>>) -> impl IntoResponse {
+    let secret_uuid = database::get_uuid();
+
+    let base_url = "https://localhost:8443/secrets/retrieve_secret/";
+    let secret_url = format!("{}{}", base_url, secret_uuid);
+
+
+    match value_store.as_ref() {
+         database::StorageEnum::InMemory(map) => {
+             let mut map_write_guard = map.write().await; // Acquire write lock
+             map_write_guard.insert(secret_uuid.clone(), secret_url.clone());
+         }
+         database::StorageEnum::ExternalDB(redis_pool) => {
+             let mut redis_conn = redis_pool.get().await.unwrap(); // Get connection from pool
+             redis_client::get_or_set_value_with_retries(
+                 RedisOperation::Set,
+                 &mut redis_conn,
+                 &secret_uuid,
+                 Some(&secret_url),
+             )
+             .await
+             .unwrap();
+         }
+         database::StorageEnum::None => {
+             tracing::debug!("No storage defined.");
+         }
+     }
+
+
+    match value_store.as_ref() {//.as_ref() {
+        database::StorageEnum::InMemory(ref map) => {
+            // Insert directly into the map without cloning.
+            &map.insert(secret_uuid.clone(), secret_uuid.clone());
+        },
+        // TODO fix this and the weird redis_connection issue
+        database::StorageEnum::ExternalDB(ref mut redis_connection) => {
+            redis_client::get_or_set_value_with_retries(
+                RedisOperation::Set, 
+                redis_connection, 
+                &secret_uuid, 
+                Some(&secret_url)
+            ).await.unwrap();
+            tracing::debug!("NO OP ExternalDB")
+        },
+        database::StorageEnum::None => {
+            tracing::debug!("No storage defined.");
+        }
+    }
+
+    (StatusCode::OK, secret_url).into_response()
+} */
+
+
+/* 
 pub async fn retrieve_secret2(
     Path(uuid): Path<String>, 
     Extension(db): Extension<Arc<Mutex<database::DBStates>>>,
@@ -338,23 +330,8 @@ pub async fn retrieve_secret2(
             (StatusCode::NOT_FOUND).into_response()
         }
         database::StorageEnum::None => (StatusCode::NOT_FOUND).into_response(),
-
-        // match&mut db.value_store {
-        //     database::StorageEnum::InMemory(map) => {
-        //         let output = map.get(&uuid).unwrap_or(&"HT Secret not found".to_string()).to_string();
-                
-        //         (StatusCode::OK, output.to_string()).into_response()
-        //     }
-        //     database::StorageEnum::ExternalDB(redis_connection) => {
-        //         redis_client::get_value_with_retries(&mut redis_connection.clone(), &uuid).await.map_or_else(
-        //             |status| (StatusCode::NOT_FOUND, "EDB Secret not found").into_response(),
-        //             |secret_url| (StatusCode::OK, secret_url).into_response(),
-        //         )
-        //     }
-        //     database::StorageEnum::None => (StatusCode::NOT_FOUND, "NO OP").into_response(),
-        // }
     }
-}
+} */
 
 
 
@@ -376,116 +353,6 @@ pub async fn retrieve_secret2(
 
 
 
-
-//////////////////
-// HashTable GET/SET
-//////////////////
-pub async fn hashtable_store_secret(
-    Extension(db): Extension<Arc<Mutex<HashMap<String, String>>>>
-) -> impl IntoResponse {
-    let secret_uuid = database::get_uuid();
-    let base_url = "https://localhost:8443/secrets/retrieve_secret/";
-    let secret_url = format!("Secret-test:\n{}{}", base_url, secret_uuid);
-
-    //lock, write and unlock
-    let mut db = db.lock().unwrap();
-    db.insert("key".to_string(), "oogy boogy".to_string());
-    drop(db);
-    //
-
-    (StatusCode::OK, secret_url).into_response()
-}
-
-async fn hashtable_retrieve_secret(
-    Extension(db): Extension<Arc<Mutex<HashMap<String, i32>>>>
-) -> impl IntoResponse {
-    // Acquire the lock
-    let mut db = db.lock().unwrap();
-
-    // Modify your hashmap
-    db.insert("test-key".to_string(), 42); 
-
-    drop(db); // Release the lock
-
-    StatusCode::OK // Change the status code if needed
-}
-
-
-//////////////////
-// Redis/Valkey GET/SET
-//////////////////
-#[debug_handler]
-async fn redis_store_secret(Extension(redis_connection): Extension<MultiplexedConnection>) -> impl IntoResponse {
-    // send uuid as key and secret as value
-
-    let secret_uuid = uuid::Uuid::new_v4().to_string();
-
-    //generate URL with UUID
-    let base_url = "https://localhost:8443/secrets/retrieve_secret/"; // TODO get HOST value dymanically
-    let secret_url = format!("Secret-test:\n{}{}", base_url, secret_uuid);
-
-    redis_client::get_or_set_value_with_retries(RedisOperation::Set, &mut redis_connection.clone(), &secret_uuid, Some(&secret_url)).await.unwrap();
-
-    (StatusCode::OK, secret_url).into_response()
-}
-
-#[debug_handler]
-async fn redis_store_secret_post(
-    Extension(redis_connection): Extension<MultiplexedConnection>,
-    Json(payload): Json<SecretData>,
-) -> impl IntoResponse {
-    // validate constraints of secret, <=10k, etc 
-    // Get the secret from the JSON payload and encode it
-    let secret_string = base64::encode(&payload.secret);
-
-    // Generate UUID
-    let secret_uuid = uuid::Uuid::new_v4().to_string();
-
-    // Store in Redis
-    redis_client::get_or_set_value_with_retries(RedisOperation::Set, &mut redis_connection.clone(), &secret_uuid, Some(&secret_string))
-    .await
-    .map_err(|err| {
-        // Handle Redis errors
-        StatusCode::INTERNAL_SERVER_ERROR
-    });
-
-    // Generate Response URL (adjust if needed)
-    let base_url = "https://localhost:8443/secrets/retrieve_secret/";
-    let secret_url = format!("Secret-test:\n{}{}", base_url, secret_uuid);
-
-    (StatusCode::CREATED, secret_url).into_response()
-}
-
-#[debug_handler]
-async fn redis_retrieve_secret(
-    Extension(redis_connection): Extension<MultiplexedConnection>,
-    Path(uuid_str): Path<String>, // Extract the UUID string 
-) -> impl IntoResponse {
-
-    // Attempt to parse the UUID
-    let uuid = match Uuid::parse_str(&uuid_str) {
-        Ok(uuid) => uuid,
-        Err(_) => return (StatusCode::BAD_REQUEST, "Invalid UUID format").into_response(),
-    };
-
-    // Look up value in Redis
-    let value = redis_client::get_value_with_retries(&mut redis_connection.clone(), &uuid.to_string()).await;
-    match value {
-        Ok(value) => {
-            let output = format!("Secret:\n{}\n{}\n", value, uuid);
-            
-            // Decode Base64
-            // TODO: improve with base64::URL_SAFE_NO_PAD and stop using deprecated function
-            let decoded_secret = base64::decode(&value); 
-            
-            match decoded_secret {
-                Ok(decoded) => (StatusCode::OK, decoded).into_response(),
-                Err(_) => (StatusCode::BAD_REQUEST, "Invalid Base64").into_response(),
-            }
-        },
-        Err(status) => (StatusCode::NOT_FOUND, "Secret not found").into_response()
-    }
-}
 
 
 //////////////////

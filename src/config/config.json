@@ -12,6 +12,7 @@
     "redis_server": "redis://127.0.0.1",
     "redis_port": 6379,
 
+    "users_enabled": false,
     "db_persist": false,
     "db_remote": false,
     "db_host": "127.0.0.1",
