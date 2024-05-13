@@ -19,6 +19,11 @@ test:
 	cargo geiger
 
 
+build_tailwind:
+	npx tailwindcss -i ./input.css -o ./static/styles.css --minify
+
+
+
 release: compile_release container
 
 release_x86: compile_x86_64 container_x86_64

@@ -12,7 +12,7 @@ use std::{
     net::{IpAddr, SocketAddr}, 
     path::PathBuf, 
     str::FromStr, 
-    sync::{Arc, Mutex}
+    sync::Arc,
 };
 
 // External crate imports
@@ -23,8 +23,8 @@ use axum::{
 };
 use axum_server::tls_rustls::RustlsConfig;
 
+
 use clap::Parser;
-use tokio::sync::RwLock;
 
 use core::panic;
 
@@ -36,8 +36,6 @@ use tracing_subscriber::{
 };
 use tracing_subscriber::fmt;
 
-use redis::aio::MultiplexedConnection;
-
 // Local imports
 
 mod other;
@@ -45,6 +43,7 @@ mod api;
 mod custom_middleware;
 mod redis_client;
 mod database;
+mod frontend;
 
 mod config;
 
@@ -84,7 +83,7 @@ async fn main() {
     tracing::debug!("Creating db_sate");
 
     let value_store = database::init_kv_db(&config).await.unwrap();
-    let arc_value_store = Arc::new(value_store);
+    //let arc_value_store = Arc::new(value_store);
 
     let arc_user_db = if config.users_enabled {
         Some(Arc::new(database::init_user_db(&config).await.unwrap()))
@@ -98,7 +97,18 @@ async fn main() {
     // uuid <--> Secrets routes
     let secrets_routes = Router::new()
         //.route("/store_secret", get(|State(state): State<MultiplexedConnection>|top_level_handler_fn!(get, api::store_secret)))
-        .route("/store_secret", get(api::test_store_secret_get))
+        // .route("/1", get(api::test_store_secret_get))
+
+        // .route( "/2",post(api::test_store_secret_post)
+        //     .get(|| async { 
+        //         (StatusCode::OK, Html(frontend::OldSecretFormTemplate {}.render().unwrap())) 
+        //     }
+        //     ),
+        // )
+        .route("/submit",
+            get(frontend::secret_form_handler)
+            .post(api::test_store_secret_post),
+        )
         //.route("/store_secret", get(api::test_store_secret_get))
         //.route("/retrieve_secret", get(api::retrieve_secret))
         .route("/retrieve_secret/:uuid", get(api::test_retrieve_secret_get))
@@ -107,8 +117,8 @@ async fn main() {
 
 
     let user_routes = Router::new()
-        .route("/signup", get(api::signup_get_handler)) //.post(api::signup_post_handler))
-        //.route("/login", get(api::login_get_handler).post(api::login_post_handler))
+        .route("/signup", get(api::signup_get_handler))//.post(api::signup_post_handler))
+        .route("/login", get(api::login_get_handler))//.post(api::login_post_handler))
         .route("/logout", post(api::logout_handler))
         .route("/*any", get(api::not_found))
         //.layer(Extension(arc_user_db));
@@ -116,6 +126,9 @@ async fn main() {
         
     let webserver = Router::new()
         .route("/favicon.ico", get(api::favicon))
+        .route("/static/*any", get(frontend::styles_handler))
+        .route("/webfonts/*any", get(frontend::styles_handler))
+        //.route("/static/all.min.css", get(frontend::styles_handler))
         .route("/", get(api::root_handler))
 
         //Secrets nesting
