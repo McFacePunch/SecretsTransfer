@@ -76,23 +76,25 @@ async fn main() {
     other::ascii_art(); // eh why not?
 
     tracing::info!("Using configuration file: {}", args.config);
-    let config: config::Config = config::load_config(&args.config).unwrap();
+    let active_config = config::load_config(&args.config).unwrap().clone();
 
-    setup_logging(&config);
+    setup_logging(&active_config);
 
     tracing::debug!("Creating db_sate");
 
-    let value_store = database::init_kv_db(&config).await.unwrap();
+    let value_store = database::init_kv_db(&active_config).await.unwrap();
     //let arc_value_store = Arc::new(value_store);
 
-    let arc_user_db = if config.users_enabled {
-        Some(Arc::new(database::init_user_db(&config).await.unwrap()))
+    let arc_user_db = if active_config.users_enabled {
+        Some(Arc::new(database::init_user_db(&active_config).await.unwrap()))
     } else {
         None
     };
     //let arc_db_state: Arc<Mutex<database::DBStates>> = Arc::new(Mutex::new(db_state));
     //let redis_pool = Arc::new(Pool::builder()...build()?);
-    let in_memory_map = database::init_kv_db(&config).await.unwrap();
+    let in_memory_map = database::init_kv_db(&active_config).await.unwrap();
+
+    let arc_config = Arc::new(active_config.clone());
 
     // uuid <--> Secrets routes
     let secrets_routes = Router::new()
@@ -128,14 +130,14 @@ async fn main() {
         .route("/favicon.ico", get(api::favicon))
         .route("/static/*any", get(frontend::styles_handler))
         .route("/webfonts/*any", get(frontend::styles_handler))
-        //.route("/static/all.min.css", get(frontend::styles_handler))
-        .route("/", get(api::root_handler))
+        .route("/", get(frontend::root_page_handler))
+        .route("/passwords", get(frontend::password_page_handler))
 
         //Secrets nesting
         .nest("/secrets", secrets_routes)
         
         //Optional, User's nesting
-        .nest("/user", if config.users_enabled {
+        .nest("/user", if active_config.users_enabled {
             user_routes
         } else {
             Router::new().route("/*any", get(api::not_found))
@@ -150,25 +152,26 @@ async fn main() {
         // catch all handles and layers
         .route("/*any", get(api::not_found))
         .layer(middleware::from_fn(custom_middleware::print_request_response))
-        .layer(Extension(config.debug_requests));
+        .layer(Extension(active_config.debug_requests))
+        .layer(Extension(arc_config));
         //.layer(HandleErrorLayer::new(custom_middleware::handle_error)); // TODO: wrap all error via this handler middleware
 
 
 
 
     let ports = Ports { //todo move to two args vs this setup?
-        http: config.http_port,
-        https: config.https_port,
+        http: active_config.http_port,
+        https: active_config.https_port,
     };
     
     // optional: spawn a second server to redirect http requests to this server
-    if config.http_redirection {
+    if active_config.http_redirection {
         tracing::info!("Spawning HTTP redirection server on port {}", ports.http);
         tokio::spawn(redirect_http_to_https(ports));
     }
 
-    let cert_path_buf = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(config.cert_path);
-    let key_path_buf = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(config.key_path);
+    let cert_path_buf = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(active_config.cert_path);
+    let key_path_buf = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(active_config.key_path);
     tracing::info!("Using certificate at: {:?}", cert_path_buf);
     tracing::info!("Using private key at: {:?}", key_path_buf);
 
@@ -176,8 +179,8 @@ async fn main() {
 
     // run https server
     let addr = SocketAddr::new(
-        IpAddr::from_str(config.listen_address.as_str()).unwrap(),
-        config.https_port,
+        IpAddr::from_str(active_config.listen_address.as_str()).unwrap(),
+        active_config.https_port,
     );
     tracing::info!("listening on {}", addr);
     axum_server::bind_rustls(addr, tls_config)
@@ -186,9 +189,9 @@ async fn main() {
         .unwrap();
 }
 
-fn setup_logging(config: &config::Config) {
+fn setup_logging(active_config: &config::Config) {
     // Parse the log level from the config
-    let log_level = match config.debug_level.to_lowercase().as_str() {
+    let log_level = match active_config.debug_level.to_lowercase().as_str() {
         "error" => LevelFilter::ERROR,
         "warn" => LevelFilter::WARN,
         "info" => LevelFilter::INFO,
@@ -205,7 +208,7 @@ fn setup_logging(config: &config::Config) {
         .with_writer(std::fs::OpenOptions::new()
             .append(true)
             .create(true)
-            .open(config.debug_log_path.as_str())
+            .open(active_config.debug_log_path.as_str())
             .unwrap())
         .with_filter(log_level);
 

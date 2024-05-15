@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secret Transfer</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/all.min.css">
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #1e3a8a, #1e40af); /* Updated to a pleasant dark blue gradient */
+        }
+        .card {
+            @apply bg-cool-blue-300 text-cool-blue-900 p-6 rounded-lg shadow-lg;
+        }
+    </style>
+</head>
+<body class="gradient-bg min-h-screen text-white font-sans">
+
+    <!-- Navbar -->
+    <nav class="flex items-center justify-between p-6 bg-cool-blue-700">
+        <div class="text-2xl font-bold">Secret Transfer</div>
+        {% if login_enabled %}
+        <div>
+            <a href="/login" class="text-accent-teal hover:text-accent-cyan">
+                <i class="fas fa-sign-in-alt"></i> Login
+            </a>
+        </div>
+        {% endif %}
+    </nav>
+
+    <!-- Main Content -->
+    <div class="container mx-auto mt-10">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <!-- Feature Cards -->
+            <div class="card">
+                <h2 class="text-xl font-bold mb-4">Store Secrets</h2>
+                <p class="mb-4">Easily share sensitive data like passwords, tokens, etc in a secure way.</p>
+                <a href="/secrets/submit" class="text-accent-teal hover:text-accent-cyan">
+                    <i class="fas fa-plus-circle"></i> Try it now
+                </a>
+            </div>
+            <div class="card">
+                <h2 class="text-xl font-bold mb-4">Secure Storage</h2>
+                <p class="mb-4">All your secrets are stored securely with end-to-end encryption.</p>
+                <i class="fas fa-lock text-4xl text-accent-teal"></i>
+            </div>
+            <div class="card">
+                <h2 class="text-xl font-bold mb-4">Share Easily</h2>
+                <p class="mb-4">Share your secrets with others securely using our shareable links.</p>
+                <i class="fas fa-share-alt text-4xl text-accent-teal"></i>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="mt-10 p-6 bg-cool-blue-800 text-center text-cool-blue-200">
+        <p>&copy; 2024 Secret Transfer. All rights reserved.</p>
+    </footer>
+
+</body>
+</html>

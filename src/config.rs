@@ -3,7 +3,7 @@ use std::fs;
 
 macro_rules! pub_struct {
     ($name:ident {$($field:ident: $t:ty,)*}) => {
-        #[derive(Deserialize,Debug)]
+        #[derive(Deserialize,Debug,Clone)]
         pub struct $name {
             $(pub $field: $t),*
         }

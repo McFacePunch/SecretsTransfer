@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secure Password Generator</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/all.min.css">
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #1e3a8a, #1e40af); 
+        }
+        .card {
+            @apply bg-cool-blue-300 text-cool-blue-900 p-6 rounded-lg shadow-lg;
+        }
+        .copy-button {
+            cursor: pointer;
+            color: #00D1C1; 
+            margin-left: 10px;
+        }
+        .copy-button:hover {
+            color: #00AEEF; 
+        }
+    </style>
+</head>
+<body class="gradient-bg min-h-screen text-white font-sans">
+
+    <!-- Navbar -->
+    <nav class="flex items-center justify-between p-6 bg-cool-blue-700">
+        <div class="text-2xl font-bold">Secret Transfer</div>
+        {% if login_enabled %}
+        <div>
+            <a href="/login" class="text-accent-teal hover:text-accent-cyan">
+                <i class="fas fa-sign-in-alt"></i> Login
+            </a>
+        </div>
+        {% endif %}
+    </nav>
+
+    <!-- Main Content {% include "password_generator.html" %} -->
+    <div id="app" class="container mx-auto mt-10">
+    </div>
+    {% block content %}{% endblock %}
+
+    <!-- Footer -->
+    <footer class="mt-10 p-6 bg-cool-blue-800 text-center text-cool-blue-200">
+        <p>&copy; 2024 Secret Transfer. All rights reserved.</p>
+    </footer>
+
+</body>
+</html>
