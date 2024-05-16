@@ -1,0 +1,21 @@
+    <!-- Navbar -->
+    <nav class="flex items-center justify-between p-6 bg-cool-blue-700">
+        <div class="text-2xl font-bold">Secret Transfer</div>
+        <div>
+            <a href="/about" class="text-accent-teal hover:text-accent-cyan">
+                About
+            </a>
+        </div>
+        <div>
+            <a href="/contact" class="text-accent-teal hover:text-accent-cyan">
+            Contact <i class="fa-solid fa-address-card"></i>
+            </a>
+        </div>
+        {% if login_enabled %}
+        <div>
+            <a href="/login" class="text-accent-teal hover:text-accent-cyan">
+                <i class="fas fa-sign-in-alt"></i> Login
+            </a>
+        </div>
+        {% endif %}
+    </nav>

@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+{% block header %}
+{% include "header.html" %}
+{% endblock header %}
+</head>
+<!--<body class="gradient-bg min-h-screen text-white font-sans">
+    <body class="gradient-bg min-h-screen text-white font-sans flex items-center justify-center"></body> 
+-->
+<body class="gradient-bg min-h-screen text-white font-sans justify-center"></body>
+
+    {% block navbar %}
+    {% include "navbar.html" %}
+    {% endblock navbar %}
+
+
+    {% block main %}
+    {% endblock main %}
+
+    {% block footer %}
+    {% include "footer.html" %}
+    {% endblock footer %}
+
+</body>
+</html>

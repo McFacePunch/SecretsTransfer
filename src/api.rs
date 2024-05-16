@@ -188,13 +188,19 @@ pub async fn test_store_secret_post(
         Ok(()) => {
             tracing::info!("Stored secret {}", secret_data.secret);
             let url = Some(secret_url); // Success message
-            (StatusCode::OK, Html(frontend::SecretFormTemplate { result: url }.render().unwrap())).into_response()
+            (StatusCode::OK, Html(frontend::SecretFormTemplate { 
+                title: "Secret Form".to_string(),
+                login_enabled: false,
+                result: url }.render().unwrap())).into_response()
             //(StatusCode::OK, Html(frontend::OldSecretFormTemplate { }.render().unwrap())).into_response()
         }
         Err(e) => {
             tracing::error!("Error storing secret: {}", e);
             //let result = Some(format!("Error storing secret: {}", e)); // Error message
-            (StatusCode::INTERNAL_SERVER_ERROR, Html(frontend::SecretFormTemplate { result: None }.render().unwrap())).into_response()
+            (StatusCode::INTERNAL_SERVER_ERROR, Html(frontend::SecretFormTemplate { 
+                title: "Secret Form".to_string(),
+                login_enabled: false,
+                result: None }.render().unwrap())).into_response()
             //(StatusCode::INTERNAL_SERVER_ERROR, Html(frontend::OldSecretFormTemplate { }.render().unwrap())).into_response()
         }
     }

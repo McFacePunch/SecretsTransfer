@@ -80,39 +80,23 @@ async fn main() {
 
     setup_logging(&active_config);
 
-    tracing::debug!("Creating db_sate");
-
-    let value_store = database::init_kv_db(&active_config).await.unwrap();
-    //let arc_value_store = Arc::new(value_store);
-
+    //Setup databases and config for handlers to use
     let arc_user_db = if active_config.users_enabled {
         Some(Arc::new(database::init_user_db(&active_config).await.unwrap()))
     } else {
         None
     };
-    //let arc_db_state: Arc<Mutex<database::DBStates>> = Arc::new(Mutex::new(db_state));
-    //let redis_pool = Arc::new(Pool::builder()...build()?);
+
     let in_memory_map = database::init_kv_db(&active_config).await.unwrap();
 
     let arc_config = Arc::new(active_config.clone());
 
     // uuid <--> Secrets routes
     let secrets_routes = Router::new()
-        //.route("/store_secret", get(|State(state): State<MultiplexedConnection>|top_level_handler_fn!(get, api::store_secret)))
-        // .route("/1", get(api::test_store_secret_get))
-
-        // .route( "/2",post(api::test_store_secret_post)
-        //     .get(|| async { 
-        //         (StatusCode::OK, Html(frontend::OldSecretFormTemplate {}.render().unwrap())) 
-        //     }
-        //     ),
-        // )
         .route("/submit",
             get(frontend::secret_form_handler)
             .post(api::test_store_secret_post),
         )
-        //.route("/store_secret", get(api::test_store_secret_get))
-        //.route("/retrieve_secret", get(api::retrieve_secret))
         .route("/retrieve_secret/:uuid", get(api::test_retrieve_secret_get))
         .route("/*any", get(api::not_found))
         .layer(Extension(in_memory_map));
@@ -123,15 +107,23 @@ async fn main() {
         .route("/login", get(api::login_get_handler))//.post(api::login_post_handler))
         .route("/logout", post(api::logout_handler))
         .route("/*any", get(api::not_found))
-        //.layer(Extension(arc_user_db));
         .layer(Extension(arc_user_db));
         
     let webserver = Router::new()
         .route("/favicon.ico", get(api::favicon))
         .route("/static/*any", get(frontend::styles_handler))
         .route("/webfonts/*any", get(frontend::styles_handler))
+
         .route("/", get(frontend::root_page_handler))
-        .route("/passwords", get(frontend::password_page_handler))
+        .route("/index.html", get(frontend::root_page_handler))
+
+        .route("/about", get(frontend::about_handler))
+        //.route("/contact", get(frontend::contact_handler))
+        //.route("/privacy", get(frontend::privacy_handler))
+        //.route("/terms", get(frontend::terms_handler))
+        //.route("/page", get(frontend::get_page)) // reserved for testing
+        
+        .route("/passwords", get(frontend::password_handler))
 
         //Secrets nesting
         .nest("/secrets", secrets_routes)
