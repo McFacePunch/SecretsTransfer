@@ -1,11 +1,9 @@
 // database interrface for handling both local in-memeory and remote nosql databases cleanly.
-use std::{fmt, result};
+use std::fmt;
 use std::sync::Arc;
 use std::{collections::HashMap, error::Error};
-use clap::error;
 use uuid::Uuid;
-use rusqlite::{Connection, Result};//, Error};
-use std::path::Path;
+use rusqlite::Result;//, Error};
 
 use base64::prelude::*;
 
@@ -81,7 +79,10 @@ impl Storage for RedisStorage {
 
         // base64 encode the value here?
 
-        redis_client::get_or_set_value_with_retries(redis_client::RedisOperation::Set, &mut conn.clone(), &key, Some(&value))
+        redis_client::get_or_set_value_with_retries(
+                            redis_client::RedisOperation::Set, 
+                            &mut conn.clone(),
+                            &key, Some(&value))
         .await
         .map_err(|err| {
             // Handle Redis errors
@@ -132,10 +133,8 @@ pub struct InMemoryStorage {
 impl Storage for InMemoryStorage {
     async fn set(&self, key: &str, value: &str) -> Result<(), Box<dyn Error>> {
         let mut map = self.map.write().await;
-
-        // No need for the extra `match` here
         if map.insert(key.to_string(), value.to_string()).is_some() {
-            Err(Box::new(DatabaseError::Generic("Key not found".to_string() ))) // Specific error type
+            Err(Box::new(DatabaseError::Generic("Key set error".to_string() )))
         } else {
             Ok(()) 
         } 
@@ -143,10 +142,9 @@ impl Storage for InMemoryStorage {
 
     async fn get(&self, key: &str) -> Result<Option<String>, Box<dyn Error>> {
         let map = self.map.read().await;
-        //Ok(map.get(key).cloned()).ok_or(DatabaseError::Generic("Key not found".to_string()));
-        let value = map.get(key).ok_or(DatabaseError::Generic("Key not found".to_string() ));
-        Ok(Some(value.unwrap().to_string()))
-        //return Ok(Some(map.get(key).ok_or(DatabaseError::Generic("Key not found".to_string())).unwrap()))
+        let value: std::prelude::v1::Result<&String, DatabaseError> = map.get(key)
+            .ok_or(DatabaseError::Generic("Key get error, not found?".to_string() ));
+        Ok(Some(value.unwrap().to_string())) // TODO error handling for if a secret is requested but does not exist
     }
 
 }

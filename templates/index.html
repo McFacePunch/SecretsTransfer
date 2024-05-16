@@ -1,0 +1,40 @@
+{% extends "default_template.html" %} 
+    {% block main %}
+    <!-- Main Content -->
+    <section class="hero">
+    <div class="container mx-auto mt-10 text-center">
+        <h1 class="text-4xl md:text-5xl font-bold mb-4">Share Your Secrets Securely</h1>
+        <p class="text-lg md:text-xl mb-8">End-to-end encrypted secret sharing made easy.</p>
+    </div>
+    <div class="container mx-auto mt-10 flex items-center justify-center">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <!-- Feature Cards -->
+            <div class="card">
+                <h2 class="text-xl font-bold mb-4">Store Secrets</h2>
+                <p class="mb-4">Easily share sensitive data like passwords, tokens, etc in a secure way.</p>
+                <a href="/secrets/submit" class="text-accent-teal hover:text-accent-cyan">
+                    <i class="fas fa-plus-circle"></i> Try it now
+                </a>
+            </div>
+            <div class="card">
+                <h2 class="text-xl font-bold mb-4">Password Generator</h2>
+                <p class="mb-4">Securely generate passwords up to 128 characters using pure javascript so it never leaves your computer.</p>
+                <a href="/passwords" class="text-accent-teal hover:text-accent-cyan">
+                    <i class="fas fa-plus-circle"></i> Try it now
+                </a>
+            </div>
+             <br>
+            <div class="card">
+                <h2 class="text-xl font-bold mb-4">Secure Storage</h2>
+                <p class="mb-4">All your secrets are stored securely with end-to-end encryption.</p>
+                <i class="fas fa-lock text-4xl text-accent-teal"></i>
+            </div>
+            <div class="card">
+                <h2 class="text-xl font-bold mb-4">Share Easily</h2>
+                <p class="mb-4">Share your secrets with others securely using our shareable links.</p>
+                <i class="fas fa-share-alt text-4xl text-accent-teal"></i>
+            </div>
+        </div>
+    </div>
+    </section>
+    {% endblock main %}

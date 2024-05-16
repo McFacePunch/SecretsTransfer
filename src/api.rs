@@ -4,37 +4,29 @@
 use std::{
     convert::Infallible, path::PathBuf, 
     net::{IpAddr, SocketAddr}, fmt::Write,
-    collections::HashMap,
     sync::{Arc, Mutex},
     error::Error,
 };
 
 use axum::{
-    body::Body, debug_handler, 
-    extract::{ConnectInfo, Extension, Form, Path, Query, Json},
-    http::{header::HeaderMap, status, StatusCode},
+    body::Body, //debug_handler, //todo use handler
+    extract::{ConnectInfo, Extension, Form, Path},
+    http::{header::HeaderMap, StatusCode},
     response::{Html, IntoResponse, Redirect, Response}
 };
-use serde_json::map;
-use tracing_subscriber::registry::Data;
 
-use crate::{database, redis_client, redis_client::RedisOperation};
-use redis::aio::MultiplexedConnection;
+use crate::database;
 
 use serde::Deserialize;
 use serde::Serialize;
 
-use tokio::{fs::read, io::AsyncReadExt};
-use uuid::Uuid;
+use tokio::fs::read;
 use validator::Validate; 
-use base64;
-
-use crate::config;
 
 use crate::database::{Storage, StorageEnum};
 
 #[derive(Deserialize, Validate)]
-struct SecretData {
+pub struct SecretData {
     #[validate(length(max = 10240, message = "Secret exceeds maximum size of 10KB"))]
     secret: String,
 }
@@ -74,8 +66,8 @@ pub async fn status_handler() -> impl IntoResponse {
     (StatusCode::OK, "Service is running").into_response()
 }
 
-// TODO implement this
-pub async fn login_handler() -> impl IntoResponse {
+// TODO implement the login page
+pub async fn login_get_handler() -> impl IntoResponse {
     (StatusCode::OK, "Login Page").into_response()
 }
 
@@ -132,7 +124,7 @@ pub async fn signup_get_handler() -> impl IntoResponse {
 }
 
 pub async fn signup_post_handler(Form(signup_data): Form<SignupForm>,
-Extension(db): Extension<Arc<Mutex<database::StorageEnum>>>
+Extension(_db): Extension<Arc<Mutex<database::StorageEnum>>>
 ) -> StatusCode {
     // 1. Validate the email and password (format, uniqueness, etc.)
     // 2. Hash the password securely (never store plain text passwords)
@@ -153,14 +145,11 @@ Extension(db): Extension<Arc<Mutex<database::StorageEnum>>>
             //return Redirect::temporary("login")
         }
         Err(e) => {
-            tracing::debug!("Received a bad signup request for user: {}", form.email);
+            tracing::debug!("Received a bad signup request for user: {}\n{}", form.email, e);
             return StatusCode::BAD_REQUEST;
         }
     }
 } 
-
-
-
 
 async fn get_value(storage: &StorageEnum, key: &str) -> Result<Option<String>, Box<dyn Error>> {
     match storage {
@@ -180,55 +169,42 @@ async fn set_value(storage: &StorageEnum, key: &str, value: &str) -> Result<(), 
     }
 }
 
-pub async fn test_store_secret_get(
-    Extension(db): Extension<database::StorageEnum>,
-) -> impl IntoResponse {
-    let secret_uuid = database::get_uuid();
+use crate::frontend;
 
-    let base_url = "https://localhost:8443/secrets/retrieve_secret/";
-    let secret_url = format!("{}{}", base_url, secret_uuid);
-
-    //let value = "Ima test value value, im a test test value value";
-
-    let out = set_value(&db, &secret_uuid, &secret_url).await;
-    match out {
-        Ok(()) => {
-            tracing::debug!("Secret Stored!: {}", secret_url);
-            (StatusCode::OK, secret_url).into_response()
-        },
-        Err(e) => {
-            tracing::error!("Error storing secret: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR).into_response()
-        }
-    }
-}
+use askama::Template;
 
 pub async fn test_store_secret_post(
     Extension(db): Extension<database::StorageEnum>,
+    Form(secret_data): Form<SecretData>, // Extract form data
 ) -> impl IntoResponse {
     let secret_uuid = database::get_uuid();
 
     let base_url = "https://localhost:8443/secrets/retrieve_secret/";
     let secret_url = format!("{}{}", base_url, secret_uuid);
 
-    //let value = "Ima test value value, im a test test value value";
+    let out = set_value(&db, &secret_uuid, &secret_data.secret).await;
 
-    let out = set_value(&db, &secret_uuid, &secret_url).await;
-     match out {
-
+    match out {
         Ok(()) => {
-            tracing::debug!("Secret Stored!: {}", secret_url);
-            (StatusCode::OK, secret_url).into_response()
-        },
+            tracing::info!("Stored secret {}", secret_data.secret);
+            let url = Some(secret_url); // Success message
+            (StatusCode::OK, Html(frontend::SecretFormTemplate { 
+                title: "Secret Form".to_string(),
+                login_enabled: false,
+                result: url }.render().unwrap())).into_response()
+            //(StatusCode::OK, Html(frontend::OldSecretFormTemplate { }.render().unwrap())).into_response()
+        }
         Err(e) => {
             tracing::error!("Error storing secret: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR).into_response()
+            //let result = Some(format!("Error storing secret: {}", e)); // Error message
+            (StatusCode::INTERNAL_SERVER_ERROR, Html(frontend::SecretFormTemplate { 
+                title: "Secret Form".to_string(),
+                login_enabled: false,
+                result: None }.render().unwrap())).into_response()
+            //(StatusCode::INTERNAL_SERVER_ERROR, Html(frontend::OldSecretFormTemplate { }.render().unwrap())).into_response()
         }
     }
-    //(StatusCode::OK).into_response()
 }
-
-
 
 
 pub async fn test_retrieve_secret_get(

@@ -1,0 +1,40 @@
+{% extends "default_template.html" %}
+
+{% block main %}
+
+<section class="about-us py-20">
+    <div class="container mx-auto px-4">
+        <h1 class="text-4xl md:text-5xl font-bold text-center mb-8">About SecretsTransfer</h1>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div class="prose prose-lg max-w-none">
+                <p>
+                    In today's interconnected world, securely sharing sensitive information is a constant challenge. Whether it's passwords, API keys, or confidential notes, finding a simple yet robust solution is crucial. 
+                </p>
+                <p>
+                    SecretsTransfer was born out of this need. We understand the frustration of juggling multiple tools or relying on insecure methods for sharing secrets. That's why we created a streamlined, end-to-end encrypted solution that prioritizes ease of use and deployment.
+                </p>
+            </div>
+            <div class="flex items-center justify-center">
+                <i class="fas fa-shield-alt text-8xl text-accent-teal"></i>  
+            </div>
+        </div>
+
+        <h2 class="text-2xl md:text-3xl font-bold text-center mt-12 mb-6">Built with Rust for Uncompromising Security</h2>
+        <p class="text-center mb-8">
+            Security is at the core of [Your Project Name]. By leveraging the power of Rust, a programming language renowned for its memory safety and performance, we've built a tool that's inherently resistant to common vulnerabilities like buffer overflows and memory leaks. 
+        </p>
+        <p class="text-center mb-8">
+            This commitment to Rust isn't just about code; it's about fostering a security-first mindset throughout our development process. 
+        </p>
+    </div>
+</section>
+
+<section class="cta py-12">
+    <div class="container mx-auto px-4 text-center">
+        <h2 class="text-3xl font-bold mb-4">Experience the Difference</h2>
+        <p class="text-lg mb-8">Sources: https://github.com/McFacePunch/SecretsTransfer</p>
+        <a href="/secrets/submit" class="btn btn-primary">Try it!</a>
+    </div>
+</section>
+{% endblock main %}

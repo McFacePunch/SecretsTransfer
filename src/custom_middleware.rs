@@ -140,7 +140,7 @@ pub async fn handle_error(err: BoxError, Extension(debug_requests): Extension<bo
     );
 
     // Return the response
-    let res = next.run(req).await;
+    let _res = next.run(req).await;//todo fix response
     //return Ok(res)
     return Ok(response)
 }
