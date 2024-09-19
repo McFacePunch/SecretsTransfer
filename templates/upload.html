@@ -1,0 +1,94 @@
+{% extends "default_template.html" %}
+
+{% block main %}
+
+<section class="section">
+  <div class="container">
+    <div class="columns is-centered">
+      <div class="column is-half-desktop">
+        <div class="card">
+          <div class="card-content">
+            <h1 class="title is-2">File Upload</h1>
+            <h2 class="subtitle">Upload your file securely.</h2>
+
+            <form id="upload-form" method="POST" enctype="multipart/form-data">
+              <div class="field">
+                <label class="label">Select File:</label>
+                <div class="control">
+                  <input class="input" type="file" id="file" name="file" required>
+                </div>
+              </div>
+
+              <button type="submit" class="button is-primary is-fullwidth">Upload</button>
+            </form>
+
+            <div class="mt-5" id="copy-section" style="display: none;">
+              <div class="field has-addons">
+                <div class="control is-expanded">
+                  <input class="input is-success" id="upload-url" type="text" value="" readonly>
+                </div>
+                <div class="control">
+                  <button class="button is-success is-outlined" onclick="copyToClipboard()">
+                    <span class="icon is-small">
+                      <i class="fas fa-clipboard"></i>
+                    </span>
+                    <span>Copy</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div class="mt-5" id="error-section" style="display: none;">
+              <p class="has-text-danger" id="error-message"></p>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+    const uploadForm = document.getElementById('upload-form');
+    uploadForm.addEventListener('submit', async (event) => {
+        event.preventDefault(); // Prevent default form submission
+
+        const formData = new FormData(uploadForm);
+
+        try {
+            const response = await fetch('/secrets/upload_file', {
+                method: 'POST',
+                body: formData
+            });
+
+            if (response.ok) {
+                const responseText = await response.text(); // Assuming the response is a plain text URL
+                // Show the URL in the input field for copying
+                document.getElementById('upload-url').value = responseText;
+                document.getElementById('copy-section').style.display = 'block';
+                document.getElementById('error-section').style.display = 'none';
+            } else {
+                const errorText = await response.text(); // Read error response
+                document.getElementById('error-message').textContent = `Upload failed: ${errorText}`;
+                document.getElementById('error-section').style.display = 'block';
+                document.getElementById('copy-section').style.display = 'none';
+            }
+        } catch (error) {
+            document.getElementById('error-message').textContent = `An error occurred: ${error.message}`;
+            document.getElementById('error-section').style.display = 'block';
+            document.getElementById('copy-section').style.display = 'none';
+        }
+    });
+
+    function copyToClipboard() {
+        const url = document.getElementById('upload-url').value;
+        navigator.clipboard.writeText(url).then(() => {
+            alert('URL copied to clipboard');
+        }).catch((err) => {
+            console.error('Could not copy text: ', err);
+        });
+    }
+</script>
+
+{% endblock main %}

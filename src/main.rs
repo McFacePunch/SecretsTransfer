@@ -1,12 +1,6 @@
 #![forbid(unsafe_code)]
-// TODO: Add a proper license
 // graceful shutdown? https://github.com/tokio-rs/axum/blob/main/examples/tls-graceful-shutdown/src/main.rs
-// client tls? https://cloud.tencent.com/developer/article/1900692
 
-// TODO: Consider feature flags?
-
-
-// Standard library imports
 use std::{
     io, 
     net::{IpAddr, SocketAddr}, 
@@ -15,17 +9,13 @@ use std::{
     sync::Arc,
 };
 
-// External crate imports
-//{FromRequest, Host}
 use axum::{
     extract::Host, handler::HandlerWithoutStateExt, http::{StatusCode, Uri},
     middleware, response::Redirect, routing::{get, post}, BoxError, Extension, Router,
 };
 use axum_server::tls_rustls::RustlsConfig;
 
-
 use clap::Parser;
-
 use core::panic;
 
 use tracing;
@@ -36,17 +26,14 @@ use tracing_subscriber::{
 };
 use tracing_subscriber::fmt;
 
-// Local imports
-
+// Local
 mod other;
 mod api;
 mod custom_middleware;
 mod redis_client;
 mod database;
 mod frontend;
-
 mod config;
-
 mod tests;
 
 #[allow(dead_code)]
@@ -98,6 +85,12 @@ async fn main() {
             .post(api::test_store_secret_post),
         )
         .route("/retrieve_secret/:uuid", get(api::test_retrieve_secret_get))
+
+        // File upload/download
+        .route("/upload_file", get(frontend::upload_handler).post(api::file_upload_secret))
+        .route("/download_file", get(frontend::download_handler))
+        .route("/download_file", post(api::file_download_secret))
+
         .route("/*any", get(api::not_found))
         .layer(Extension(in_memory_map));
 
@@ -110,7 +103,8 @@ async fn main() {
         .layer(Extension(arc_user_db));
         
     let webserver = Router::new()
-        .route("/favicon.ico", get(api::favicon))
+        .route("/favicon.ico", get(frontend::favicon))
+        .route("/images/*any", get(frontend::image_handler))
         .route("/static/*any", get(frontend::styles_handler))
         .route("/webfonts/*any", get(frontend::styles_handler))
 
@@ -118,10 +112,10 @@ async fn main() {
         .route("/index.html", get(frontend::root_page_handler))
 
         .route("/about", get(frontend::about_handler))
+        // TODO complete these
         //.route("/contact", get(frontend::contact_handler))
         //.route("/privacy", get(frontend::privacy_handler))
         //.route("/terms", get(frontend::terms_handler))
-        //.route("/page", get(frontend::get_page)) // reserved for testing
         
         .route("/passwords", get(frontend::password_handler))
 
@@ -146,9 +140,7 @@ async fn main() {
         .layer(middleware::from_fn(custom_middleware::print_request_response))
         .layer(Extension(active_config.debug_requests))
         .layer(Extension(arc_config));
-        //.layer(HandleErrorLayer::new(custom_middleware::handle_error)); // TODO: wrap all error via this handler middleware
-
-
+        //.layer(HandleErrorLayer::new(custom_middleware::handle_error)); // TODO: wrap errors more completely via this handler middleware
 
 
     let ports = Ports { //todo move to two args vs this setup?

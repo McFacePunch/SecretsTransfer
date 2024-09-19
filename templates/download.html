@@ -1,0 +1,81 @@
+{% extends "default_template.html" %}
+
+{% block main %}
+
+<section class="section">
+  <div class="container">
+    <div class="columns is-centered">
+      <div class="column is-half-desktop">
+        <div class="card">
+          <div class="card-content">
+            <h1 class="title is-2">File Download</h1>
+            <h2 class="subtitle">Enter the file name to download it securely.</h2>
+
+            <form id="download-form" method="POST">
+              <div class="field">
+                <label class="label">Enter File Name:</label>
+                <div class="control">
+                  <input class="input" type="text" id="file" name="file" placeholder="Enter file name" required>
+                </div>
+              </div>
+
+              <button type="submit" class="button is-primary is-fullwidth">Download</button>
+            </form>
+
+            <div class="mt-5" id="error-section" style="display: none;">
+              <p class="has-text-danger" id="error-message"></p>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+    const downloadForm = document.getElementById('download-form');
+    downloadForm.addEventListener('submit', async (event) => {
+        event.preventDefault(); // Prevent default form submission
+
+        const fileName = document.getElementById('file').value; // Get the file name input value
+        const formData = new URLSearchParams(); // Use URLSearchParams for simpler content type
+        formData.append('secret', fileName); // Ensure this matches your backend's expected key
+
+        try {
+            const response = await fetch('/secrets/download_file', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded' // Use URL-encoded content type
+                },
+                body: formData // Send as URL-encoded
+            });
+
+            if (response.ok) {
+                const contentDisposition = response.headers.get('Content-Disposition');
+                const filenameMatch = contentDisposition && contentDisposition.match(/filename="(.+)"/);
+                const realFilename = filenameMatch ? filenameMatch[1] : fileName; // Fallback to input name if not present
+
+                const blob = await response.blob();
+                const downloadUrl = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = downloadUrl;
+                a.download = realFilename; // Use the filename from the response
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(downloadUrl); // Clean up URL
+                document.getElementById('error-section').style.display = 'none';
+            } else {
+                const errorText = await response.text(); // Read error response
+                document.getElementById('error-message').textContent = `File download failed: ${errorText}`;
+                document.getElementById('error-section').style.display = 'block';
+            }
+        } catch (error) {
+            document.getElementById('error-message').textContent = `An error occurred: ${error.message}`;
+            document.getElementById('error-section').style.display = 'block';
+        }
+    });
+</script>
+
+{% endblock main %}

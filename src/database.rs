@@ -4,43 +4,46 @@ use std::sync::Arc;
 use std::{collections::HashMap, error::Error};
 use uuid::Uuid;
 use rusqlite::Result;//, Error};
-
 use base64::prelude::*;
-
 use tokio::sync::RwLock;
-
 use crate::config;
 use crate::redis_client;
 
 
+
+
 type Key = String;
 type Value = String;
+
+
 
 #[derive(Debug)]
 enum DatabaseError {
     Generic(String),
 }
 
-impl std::error::Error for DatabaseError {}
+#[derive(Clone)]
+pub struct InMemoryStorage {
+    map: Arc<RwLock<HashMap<String, String>>>,
+}
 
+#[derive(Clone)]
+pub struct RedisStorage {
+    pool: Arc<redis::aio::MultiplexedConnection>,
+}
+
+
+impl std::error::Error for DatabaseError {}
 
 impl fmt::Display for DatabaseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             //DBError::DatabaseUnavailable => write!(f, "Database unavailable"),
-            //åDBError::DatabaseError(err) => write!(f, "Database operation failed: {}", err),
+            //DBError::DatabaseError(err) => write!(f, "Database operation failed: {}", err),
             DatabaseError::Generic(message) => write!(f, "Database error: {}", message),
         }
     }
 }
-
-// #[derive(Clone)]
-// pub enum StorageEnum {
-//     InMemory(HashMap<String, String>),
-//     ExternalDB(redis::aio::MultiplexedConnection),
-//     //NoSQLDB(rusqlite::Connection),
-//     None,
-// }
 
 #[derive(Clone)]
 pub enum StorageEnum {
@@ -52,31 +55,49 @@ pub enum StorageEnum {
     None,
 }
 
-/* #[derive(Clone)]
-pub struct DB_Object {
-    pub storage: StorageEnum, 
-} */
-// pub struct DB_Object {
-//     pub storage: Box<dyn Storage>, // Store a trait object
-// }
-
 pub trait Storage {
     async fn set(&self, key: &str, value: &str) -> Result<(), Box<dyn Error>>;
     async fn get(&self, key: &str) -> Result<Option<String>, Box<dyn Error>>;
 }
 
+/*
+// reference implementation
+impl Storage for InMemoryStorage {
+    async fn set(&self, key: &str, value: &str) -> Result<(), Box<dyn Error>> {
+        let mut map = self.map.write().await;
+        map.insert(key.to_string(), value.to_string());
+        Ok(())
+    }
 
-
-#[derive(Clone)]
-pub struct RedisStorage {
-    pool: Arc<redis::aio::MultiplexedConnection>,
+    async fn get(&self, key: &str) -> Result<Option<String>, Box<dyn Error>> {
+        let map = self.map.read().await;
+        Ok(map.get(key).cloned())
+    }
 }
+
+impl Storage for RedisStorage {
+    async fn set(&self, key: &str, value: &str) -> Result<(), Box<dyn Error>> {
+        let mut conn = self.pool.clone();
+        redis::cmd("SET")
+            .arg(key)
+            .arg(value)
+            .query_async(&mut conn)
+            .await?;
+        Ok(())
+    }
+
+    async fn get(&self, key: &str) -> Result<Option<String>, Box<dyn Error>> {
+        let mut conn = self.pool.clone();
+        let value: Option<String> = redis::cmd("GET").arg(key).query_async(&mut conn).await?;
+        Ok(value)
+    }
+}
+ */
 
 impl Storage for RedisStorage {
     async fn set(&self, key: &str, value: &str) -> Result<(), Box<dyn Error>> {
         let conn = self.pool.as_ref();
         //let result = redis::cmd("SET").arg(key).arg(value).query_async(&mut conn.clone()).await?;
-
         // base64 encode the value here?
 
         redis_client::get_or_set_value_with_retries(
@@ -123,13 +144,6 @@ impl Storage for RedisStorage {
     }
 }
 
-
-
-#[derive(Clone)]
-pub struct InMemoryStorage {
-    map: Arc<RwLock<HashMap<String, String>>>,
-}
-
 impl Storage for InMemoryStorage {
     async fn set(&self, key: &str, value: &str) -> Result<(), Box<dyn Error>> {
         let mut map = self.map.write().await;
@@ -146,12 +160,7 @@ impl Storage for InMemoryStorage {
             .ok_or(DatabaseError::Generic("Key get error, not found?".to_string() ));
         Ok(Some(value.unwrap().to_string())) // TODO error handling for if a secret is requested but does not exist
     }
-
 }
-
-
-
-
 
 pub async fn init_kv_db(config: &config::Config) -> Result<StorageEnum, Box<dyn Error>> {
     if config.redis_enabled {
@@ -180,7 +189,7 @@ pub async fn init_user_db(config: &config::Config) -> Result<StorageEnum, Box<dy
         if config.db_remote {
             panic!("Remote NoSQL database setup not yet implemented")  // Placeholder error
             //Ok(()?) // Placeholder error
-        } else {
+        } else { // TODO
             //let db_path = Path::new(&config.db_path); 
 
             // Schema provisioning (if needed)
@@ -191,7 +200,7 @@ pub async fn init_user_db(config: &config::Config) -> Result<StorageEnum, Box<dy
             panic!("NoSQLDB not yet implemented")
         }
     } else {
-        // In-memory database setup
+        // In-memory database setup, intentionally wont survive reboot
         //let shared_hashmap: HashMap<Key, Value> = HashMap::new();
         //let map = Arc::new(RwLock::new(HashMap::new())); // Wrap in Arc<RwLock>
         let shared_hashmap = Arc::new(RwLock::new(HashMap::new()));
@@ -199,7 +208,6 @@ pub async fn init_user_db(config: &config::Config) -> Result<StorageEnum, Box<dy
         Ok(StorageEnum::InMemory(out))
     }
 }
-
 
 pub fn get_uuid() -> String {
     let uuidf = Uuid::new_v4(); // TODO: turn into uuid7 later for indexing?
@@ -212,6 +220,7 @@ pub fn get_uuid() -> String {
 }
 
 /* 
+// moved to JS to keep it in the browser
 pub fn generate_password(){
     //Temp passwords for people who dont want to make one but want to encrypt their secrets
     use rand::Rng;

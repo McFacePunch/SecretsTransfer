@@ -2,33 +2,38 @@
 // TODO: implement dual token generation (lookup+crypto tokens) and secret storage in Redis 
 // TODO: Encrypt secret at rest
 use std::{
-    convert::Infallible, path::PathBuf, 
-    net::{IpAddr, SocketAddr}, fmt::Write,
-    sync::{Arc, Mutex},
-    error::Error,
+    borrow::Borrow, convert::Infallible, error::Error, fmt::Write, net::{IpAddr, SocketAddr}, path::PathBuf, sync::{Arc, Mutex}
 };
 
 use axum::{
     body::Body, //debug_handler, //todo use handler
-    extract::{ConnectInfo, Extension, Form, Path},
-    http::{header::HeaderMap, StatusCode},
+    extract::{ConnectInfo, Extension, Form, Path, Multipart},
+    http::{header, header::HeaderMap, StatusCode},
     response::{Html, IntoResponse, Redirect, Response}
 };
 
-use crate::database;
+use askama::Template;
+use serde::{Serialize, Deserialize};
+use validator::Validate;
+use std::str;
 
-use serde::Deserialize;
-use serde::Serialize;
 
-use tokio::fs::read;
-use validator::Validate; 
+use crate::{database::Storage, frontend};
+use crate::database;//::{Storage, StorageEnum};
 
-use crate::database::{Storage, StorageEnum};
+// TODO put the mb counter into config so its easy to adjust. Should work up and down, like using 0.5
+const MAX_FILE_SIZE: usize = 5 * 1024 * 1024; // 5MB limit
 
 #[derive(Deserialize, Validate)]
 pub struct SecretData {
     #[validate(length(max = 10240, message = "Secret exceeds maximum size of 10KB"))]
     secret: String,
+}
+
+#[derive(Serialize, Deserialize)]
+struct FileMetadata {
+    filename: String,
+    data: Vec<u8>, // Store the file data as a binary vector
 }
 
 #[derive(Deserialize,Serialize,Validate)]
@@ -38,28 +43,6 @@ pub struct SignupForm {
     
     #[validate(length(min = 12))]
     pub password: String,
-}
-
-pub async fn favicon() -> Result<Response<Body>, Infallible> {
-    // TODO: add this to the config?
-    // TODO: check for file existence and error?
-    // TODO:cache the file to prevent disk reads
-    let favicon_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("./images/favicon_io/favicon.ico");
-    let bytes = match read(favicon_path).await {
-        Ok(bytes) => bytes,
-        Err(_) => return Ok(Response::builder().status(StatusCode::NOT_FOUND).body(Body::empty()).unwrap()),
-    };
-
-    let response = Response::builder()
-        .header("Content-Type", "image/x-icon")
-        .body(Body::from(bytes))
-        .unwrap();
-
-    Ok(response)
-}
-
-pub async fn root_handler() -> impl IntoResponse {
-    (StatusCode::OK, "Hellow World!").into_response()
 }
 
 pub async fn status_handler() -> impl IntoResponse {
@@ -76,6 +59,7 @@ pub async fn logout_handler() -> impl IntoResponse {
     (StatusCode::OK, "Logout Page").into_response()
 }
 
+// TODO make this askama based
 pub async fn signup_get_handler() -> impl IntoResponse {
     let html =r#"
         <!DOCTYPE html>
@@ -123,6 +107,7 @@ pub async fn signup_get_handler() -> impl IntoResponse {
     Html(html) // returns a 200 as well
 }
 
+// TODO Implement this
 pub async fn signup_post_handler(Form(signup_data): Form<SignupForm>,
 Extension(_db): Extension<Arc<Mutex<database::StorageEnum>>>
 ) -> StatusCode {
@@ -151,27 +136,23 @@ Extension(_db): Extension<Arc<Mutex<database::StorageEnum>>>
     }
 } 
 
-async fn get_value(storage: &StorageEnum, key: &str) -> Result<Option<String>, Box<dyn Error>> {
+async fn get_value(storage: &database::StorageEnum, key: &str) -> Result<Option<String>, Box<dyn Error>> {
     match storage {
-        StorageEnum::InMemory(map) => map.get(key).await,
-        StorageEnum::Redis(pool) => pool.get(key).await,
+        database::StorageEnum::InMemory(map) => map.get(key).await,
+        database::StorageEnum::Redis(pool) => pool.get(key).await,
         //StorageEnum::NoSQLDB(conn) => conn.execute("SELECT value FROM table WHERE key = ?", [key]),
-        StorageEnum::None => Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, "No database available"))),
+        database::StorageEnum::None => Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, "No database available"))),
     }
 }
 
-async fn set_value(storage: &StorageEnum, key: &str, value: &str) -> Result<(), Box<dyn Error>> {
+async fn set_value(storage: &database::StorageEnum, key: &str, value: &str) -> Result<(), Box<dyn Error>> {
     match storage {
-        StorageEnum::InMemory(map) => map.set(key, value).await,
-        StorageEnum::Redis(pool) => pool.set(key, value).await,
+        database::StorageEnum::InMemory(map) => map.set(key, value).await,
+        database::StorageEnum::Redis(pool) => pool.set(key, value).await,
         //StorageEnum::NoSQLDB(conn) => conn.execute("INSERT INTO table (key, value) VALUES (?, ?)", [key, value]),
-        StorageEnum::None => Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, "No database available"))),
+        database::StorageEnum::None => Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, "No database available"))),
     }
 }
-
-use crate::frontend;
-
-use askama::Template;
 
 pub async fn test_store_secret_post(
     Extension(db): Extension<database::StorageEnum>,
@@ -186,7 +167,7 @@ pub async fn test_store_secret_post(
 
     match out {
         Ok(()) => {
-            tracing::info!("Stored secret {}", secret_data.secret);
+            tracing::info!("Stored secret {}", secret_data.secret); // TOOD debug remove
             let url = Some(secret_url); // Success message
             (StatusCode::OK, Html(frontend::SecretFormTemplate { 
                 title: "Secret Form".to_string(),
@@ -205,7 +186,6 @@ pub async fn test_store_secret_post(
         }
     }
 }
-
 
 pub async fn test_retrieve_secret_get(
     Extension(db): Extension<database::StorageEnum>,
@@ -230,105 +210,134 @@ pub async fn test_retrieve_secret_get(
     }
 }
 
-/* 
-//pub async fn store_secret2(Extension(hashtable): Extension<Arc<Mutex<database::DBStates>>>) -> impl IntoResponse {
-pub async fn store_secret2(Extension(mut value_store): Extension<Arc<database::DB_Object<database::StorageEnum>>>) -> impl IntoResponse {
-    let secret_uuid = database::get_uuid();
+pub async fn file_upload_secret(
+    Extension(db): Extension<database::StorageEnum>,
+    mut multipart: Multipart, 
+) -> Result<Response<Body>, (StatusCode, String)> {
+    let mut file_content = Vec::new();
+    let mut original_filename = String::new();
+    let mut total_size = 0usize;
 
-    let base_url = "https://localhost:8443/secrets/retrieve_secret/";
-    let secret_url = format!("{}{}", base_url, secret_uuid);
+    // Process the multipart form and read the file
+    while let Some(mut field) = multipart.next_field().await.map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            format!("Failed to process multipart field: {}", e),
+        )
+    })? {
+        if field.name() == Some("file") {
+            // Capture original filename
+            original_filename = field.file_name().unwrap_or_default().to_string();
 
-
-    match value_store.as_ref() {
-         database::StorageEnum::InMemory(map) => {
-             let mut map_write_guard = map.write().await; // Acquire write lock
-             map_write_guard.insert(secret_uuid.clone(), secret_url.clone());
-         }
-         database::StorageEnum::ExternalDB(redis_pool) => {
-             let mut redis_conn = redis_pool.get().await.unwrap(); // Get connection from pool
-             redis_client::get_or_set_value_with_retries(
-                 RedisOperation::Set,
-                 &mut redis_conn,
-                 &secret_uuid,
-                 Some(&secret_url),
-             )
-             .await
-             .unwrap();
-         }
-         database::StorageEnum::None => {
-             tracing::debug!("No storage defined.");
-         }
-     }
-
-
-    match value_store.as_ref() {//.as_ref() {
-        database::StorageEnum::InMemory(ref map) => {
-            // Insert directly into the map without cloning.
-            &map.insert(secret_uuid.clone(), secret_uuid.clone());
-        },
-        // TODO fix this and the weird redis_connection issue
-        database::StorageEnum::ExternalDB(ref mut redis_connection) => {
-            redis_client::get_or_set_value_with_retries(
-                RedisOperation::Set, 
-                redis_connection, 
-                &secret_uuid, 
-                Some(&secret_url)
-            ).await.unwrap();
-            tracing::debug!("NO OP ExternalDB")
-        },
-        database::StorageEnum::None => {
-            tracing::debug!("No storage defined.");
-        }
-    }
-
-    (StatusCode::OK, secret_url).into_response()
-} */
-
-
-/* 
-pub async fn retrieve_secret2(
-    Path(uuid): Path<String>, 
-    Extension(db): Extension<Arc<Mutex<database::DBStates>>>,
-) -> impl IntoResponse {
-    let db = &mut db.lock().unwrap().value_store;
-
-    //let output = d
-    match db {
-        database::StorageEnum::InMemory(map) => {
-            let output = &mut map.get(&uuid).unwrap();
-
-            //db.get(&uuid).unwrap_or(&"HT Secret not found".to_string()).to_string();
-                    
-            (StatusCode::OK, output.to_string()).into_response()
+            // Stream and check file size while reading it
+            while let Some(chunk) = field.chunk().await.map_err(|e| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    format!("Failed to read file chunk: {}", e),
+                )
+            })? {
+                total_size += chunk.len();
+                if total_size > MAX_FILE_SIZE {
+                    return Err((
+                        StatusCode::PAYLOAD_TOO_LARGE,
+                        "File exceeds the maximum size of 5MB".to_string(),
+                    ));
+                }
+                // Accumulate file data
+                file_content.extend_from_slice(&chunk);
             }
-
-        database::StorageEnum::ExternalDB(ref mut redis_connection) => {
-            (StatusCode::NOT_FOUND).into_response()
         }
-        database::StorageEnum::None => (StatusCode::NOT_FOUND).into_response(),
     }
-} */
 
+    if file_content.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "No file uploaded.".to_string()));
+    }
 
+    //let encoded_file_content = encode(&file_content);
 
+    // Generate the UUID and append it to the original filename
+    let secret_uuid = database::get_uuid();
+    let full_filename = format!("{}_{}", secret_uuid, original_filename);
 
+    // Store both the file data and the full filename in Redis
+    let file_metadata = FileMetadata {
+        filename: full_filename.clone(),
+        data: file_content,
+    };
 
+    let serialized_data = serde_json::to_string(&file_metadata).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Error serializing file metadata: {}", e),
+        )
+    })?;
 
+    // Store the serialized data in Redis
+    match set_value(&db, &secret_uuid, serialized_data.as_str()).await {
+        Ok(()) => {
+            let base_url = "https://localhost:8443/secrets/download_file";
+            let secret_url = format!("\nSecret Stored:\n{}\n{}", base_url, secret_uuid);
+            tracing::info!("Received file");
+            Ok((StatusCode::OK, secret_url).into_response())
+        }
+        Err(e) => {
+            tracing::info!("Error in upload file");
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Error storing secret: {}", e),
+            ))
+        }
+    }
+}
 
+pub async fn file_download_secret(
+    Extension(db): Extension<database::StorageEnum>,
+    Form(secret_data): Form<SecretData>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    // Retrieve the serialized file metadata from Redis
+    let serialized_data = get_value(&db, &secret_data.secret).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Error retrieving secret: {}", e),
+        )
+    })?;
 
+    // Ensure the content is present
+    let serialized_data = serialized_data.ok_or((
+        StatusCode::NOT_FOUND,
+        "Secret not found".to_string(),
+    ))?;
 
+    // Deserialize the data back into FileMetadata
+    let file_metadata: FileMetadata = serde_json::from_str(&serialized_data).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Error deserializing file metadata: {}", e),
+        )
+    })?;
 
+    // Extract the original filename by stripping the UUID from the full filename
+    let original_filename = file_metadata
+        .filename
+        .splitn(2, '_') // Split by the first occurrence of '_'
+        .nth(1) // Get the part after the UUID
+        .unwrap_or("unknown_filename");
 
+    // Decode the file data if it was stored as base64
+    let decoded_content = file_metadata.data;
 
-
-
-
-
-
-
-
-
-
+    // Build the response with the correct headers for file download
+    Ok(Response::builder()
+        .header("Content-Type", "application/octet-stream")
+        .header("Content-Disposition", format!("attachment; filename=\"{}\"", original_filename))
+        .body(Body::from(decoded_content))
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Error creating response: {}", e),
+            )
+        })?)
+}
 
 
 //////////////////

@@ -7,22 +7,9 @@ use axum::{
 };
 use axum::extract::Extension;
 use axum::extract::ConnectInfo;
-//use axum::Error;
-
 use tower::BoxError;
-
-
-
 use http_body_util::BodyExt;
-
 use std::net::SocketAddr;
-//use std::error::Error;
-
-//use tracing_subscriber::{layer::{Context, SubscriberExt}, util::SubscriberInitExt};
-
-
-//struct CatchAllErrorMiddleware;
-
 
 pub async fn print_request_response(Extension(debug_requests): Extension<bool>,
  ConnectInfo(remote_addr): ConnectInfo<SocketAddr>,
@@ -62,27 +49,26 @@ pub async fn print_request_response(Extension(debug_requests): Extension<bool>,
 }
 
 async fn buffer_and_print<B>(direction: &str, body: B) -> Result<Bytes, (StatusCode, String)>
-where
-    B: axum::body::HttpBody<Data = Bytes>,
-    B::Error: std::fmt::Display,
-{
-    let bytes = match body.collect().await {
-        Ok(collected) => collected.to_bytes(),
-        Err(err) => {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                format!("failed to read {direction} body: {err}"),
-            ));
-        }
-    };
+    where
+        B: axum::body::HttpBody<Data = Bytes>,
+        B::Error: std::fmt::Display,
+    {
+        let bytes = match body.collect().await {
+            Ok(collected) => collected.to_bytes(),
+            Err(err) => {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    format!("failed to read {direction} body: {err}"),
+                ));
+            }
+        };
 
-    if let Ok(body) = std::str::from_utf8(&bytes) {
-        tracing::debug!("{direction} body = {body:?}");
-    }
+        if let Ok(body) = std::str::from_utf8(&bytes) {
+            tracing::debug!("{direction} body = {body:?}");
+        }
 
     Ok(bytes)
 }
-
 
 #[allow(dead_code)]
 //pub async fn handle_timeout_error(err: BoxError,) -> (StatusCode, String) {

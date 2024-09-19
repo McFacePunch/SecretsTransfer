@@ -1,3 +1,5 @@
+// TODO, trace connections for observability
+
 /* use std::sync::Arc;
 use std::fs::File;
 use tracing_subscriber::layer::SubscriberExt;

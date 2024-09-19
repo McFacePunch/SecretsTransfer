@@ -1,6 +1,7 @@
 use std::sync::Arc;
+use std::convert::Infallible;
 
-use crate::config;
+use crate::{api, config};
 
 use askama::Template;
 //use askama::Html as AskamaHtml;
@@ -8,6 +9,23 @@ use askama::Template;
 use axum::{
     body::Bytes, http::{header, StatusCode, Uri}, response::{Html, IntoResponse}, Extension
 };
+use axum::{
+    body::Body, //debug_handler, //todo use handler
+    response::Response
+};
+
+pub async fn favicon() -> Result<Response<Body>, Infallible> {
+    // TODO: add this path to the config?
+    let favicon_bytes = include_bytes!("../images/favicon_io/favicon.ico");
+
+    // Serve the embedded bytes directly
+    let response = Response::builder()
+        .header("Content-Type", "image/x-icon")
+        .body(Body::from(favicon_bytes.as_ref()))
+        .unwrap();
+
+    Ok(response)
+}
 
 pub async fn styles_handler(uri: Uri) -> impl IntoResponse {
     let path = uri.path();
@@ -42,6 +60,28 @@ pub async fn styles_handler(uri: Uri) -> impl IntoResponse {
         ],
         Bytes::from_static(css),
     )
+}
+
+pub async fn image_handler(uri: Uri) -> impl IntoResponse {
+    let path = uri.path();
+
+    let (content_type, image_bytes) = match path {
+        // In case more images are needed
+        "/images/hero.png" => ("image/png", include_bytes!("../templates/static/images/hero-background.png").as_ref()),
+        //"/images/hero.jpg" => ("image/jpeg", include_bytes!("../templates/static/images/hero.jpg").as_ref()),
+        //"/images/icon.svg" => ("image/svg+xml", include_bytes!("../templates/static/images/icon.svg").as_ref()),
+
+        _ => return (StatusCode::NOT_FOUND, "404, Not Found").into_response(),  // TODO use the api::not_found to be uniform in the future
+    };
+
+    (
+        StatusCode::OK,
+        [
+            (header::CONTENT_TYPE, content_type),
+            //(header::CACHE_CONTROL, "public, max-age=31536000"), // TODO set other headers like cache
+        ],
+        Bytes::from_static(image_bytes),
+    ).into_response()
 }
 
 
@@ -117,16 +157,35 @@ pub async fn about_handler(
 }
 
 
+#[derive(Template)]
+#[template(path = "upload.html")] 
+pub struct UploadTemplate {
+    pub title: String,
+    pub login_enabled: bool,
+}
 
-/* 
-PoC code for router setup
+pub async fn upload_handler(
+    Extension(ref config): Extension<Arc<config::Config>>,
+) -> impl IntoResponse {
+    Html(UploadTemplate { 
+        title:           "Upload".to_string(),
+        login_enabled:   config.users_enabled,
+        }.render().unwrap())
+}
 
-// Axum route setup (combined)
-let app = Router::new()
-    .route(
-        "/secrets/",
-        post(test_store_secret_post)
-            .get(|| async { (StatusCode::OK, Html(SecretFormTemplate {}.render().unwrap())) }), // Serve the HTML form
-    )
-    .layer(TraceLayer::new_for_http()); // Optional tracing for debugging
- */
+
+#[derive(Template)]
+#[template(path = "download.html")] 
+pub struct DownloadTemplate {
+    pub title: String,
+    pub login_enabled: bool,
+}
+
+pub async fn download_handler(
+    Extension(ref config): Extension<Arc<config::Config>>,
+) -> impl IntoResponse {
+    Html(DownloadTemplate { 
+        title:           "Download".to_string(),
+        login_enabled:   config.users_enabled,
+        }.render().unwrap())
+}

@@ -1,6 +1,5 @@
 use std::time::Duration;
 use redis::{Client, RedisError};
-
 use redis::aio::MultiplexedConnection;
 
 extern crate redis;
@@ -27,32 +26,9 @@ pub async fn connect_to_redis(redis_url: &str) -> MultiplexedConnection {
     con
 }
 
-// Function to retrieve a value from Redis
 pub async fn get_value_from_redis(con: &mut MultiplexedConnection, key: &str) -> Result<String, RedisError> {
     let value: String = redis::cmd("GET").arg(key).query_async(con).await?;
     Ok(value)
-}
-
-// Improve this with one function to retry both get and set
-pub async fn get_value_with_retries(
-    con: &mut MultiplexedConnection,
-    key: &str,
-) -> Result<String, RedisError> {
-    let retry_delay = Duration::from_secs(1);
-    let max_retries = 3;
-    let mut retries = 0;
-
-    while retries < max_retries {
-        match get_value_from_redis(con, key).await {
-            Ok(value) => return Ok(value),
-            Err(err) => {
-                retries += 1;
-                eprintln!("Redis GET error {}\nRetrying... ({} attempts left)",err , max_retries - retries);
-                tokio::time::sleep(retry_delay).await;
-            }
-        }
-    }
-    Err(RedisError::from((redis::ErrorKind::ClientError, "Max retries exceeded")))
 }
 
 pub async fn set_value_in_redis(con: &mut MultiplexedConnection, key: &str, value: &str) -> Result<(), RedisError> {
@@ -101,6 +77,28 @@ pub async fn get_or_set_value_with_retries(
                         tokio::time::sleep(retry_delay).await;
                     }
                 } 
+            }
+        }
+    }
+    Err(RedisError::from((redis::ErrorKind::ClientError, "Max retries exceeded")))
+}
+
+// TODO Improve this?
+pub async fn get_value_with_retries(
+    con: &mut MultiplexedConnection,
+    key: &str,
+) -> Result<String, RedisError> {
+    let retry_delay = Duration::from_secs(1);
+    let max_retries = 3;
+    let mut retries = 0;
+
+    while retries < max_retries {
+        match get_value_from_redis(con, key).await {
+            Ok(value) => return Ok(value),
+            Err(err) => {
+                retries += 1;
+                eprintln!("Redis GET error {}\nRetrying... ({} attempts left)",err , max_retries - retries);
+                tokio::time::sleep(retry_delay).await;
             }
         }
     }

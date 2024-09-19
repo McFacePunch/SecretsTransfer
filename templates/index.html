@@ -1,40 +1,106 @@
 {% extends "default_template.html" %} 
+
+
     {% block main %}
     <!-- Main Content -->
-    <section class="hero">
-    <div class="container mx-auto mt-10 text-center">
-        <h1 class="text-4xl md:text-5xl font-bold mb-4">Share Your Secrets Securely</h1>
-        <p class="text-lg md:text-xl mb-8">End-to-end encrypted secret sharing made easy.</p>
+
+  <section class="hero is-large is-fullheight"> 
+    <div class="hero-body">
+      <div class="container has-text-centered">
+        <h1 class="title is-1 is-spaced">
+          Share Your Secrets Securely
+        </h1>
+        <h2 class="subtitle is-4" style="margin-top: 2rem;"> 
+          End-to-end encrypted secret sharing made easy.
+        </h2>
+        <a class="button is-primary is-large mt-4" href="#">Get Started</a>
+      </div>
     </div>
-    <div class="container mx-auto mt-10 flex items-center justify-center">
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <!-- Feature Cards -->
+  </section>
+    
+    <section class="section">
+      <div class="container">
+        <div class="columns is-centered is-multiline">
+          <div class="column is-4">
             <div class="card">
-                <h2 class="text-xl font-bold mb-4">Store Secrets</h2>
-                <p class="mb-4">Easily share sensitive data like passwords, tokens, etc in a secure way.</p>
-                <a href="/secrets/submit" class="text-accent-teal hover:text-accent-cyan">
-                    <i class="fas fa-plus-circle"></i> Try it now
-                </a>
+              <div class="card-image">
+                <figure class="image is-4by3">
+                  <img src="https://via.placeholder.com/400x300" alt="Placeholder image">
+                </figure>
+              </div>
+              <div class="card-content">
+                <div class="content">
+                  <h4>Store Secrets</h4>
+                  <p>Easily share sensitive data like passwords, tokens, etc. in a secure way.</p>
+                  <a href="/secrets/submit" class="button is-link is-outlined">Try it now</a>
+                </div>
+              </div>
             </div>
+          </div>
+          <div class="column is-4">
             <div class="card">
-                <h2 class="text-xl font-bold mb-4">Password Generator</h2>
-                <p class="mb-4">Securely generate passwords up to 128 characters using pure javascript so it never leaves your computer.</p>
-                <a href="/passwords" class="text-accent-teal hover:text-accent-cyan">
-                    <i class="fas fa-plus-circle"></i> Try it now
-                </a>
+              <div class="card-image">
+                <figure class="image is-4by3">
+                  <img src="https://via.placeholder.com/400x300" alt="Placeholder image">
+                </figure>
+              </div>
+              <div class="card-content">
+                <div class="content">
+                  <h4>Password Generator</h4>
+                  <p>Securely generate passwords up to 128 characters within your browser, so it never leaves your computer. Easy to use, and secure by design</p>
+                  <a href="/passwords" class="button is-link is-outlined">Try it now</a>
+                </div>
+              </div>
             </div>
-             <br>
+          </div>
+          <div class="column is-4">
             <div class="card">
-                <h2 class="text-xl font-bold mb-4">Secure Storage</h2>
-                <p class="mb-4">All your secrets are stored securely with end-to-end encryption.</p>
-                <i class="fas fa-lock text-4xl text-accent-teal"></i>
+              <div class="card-image">
+                <figure class="image is-4by3">
+                  <img src="https://via.placeholder.com/400x300" alt="Placeholder image">
+                </figure>
+              </div>
+              <div class="card-content">
+                <div class="content">
+                  <h4>Secure File Upload</h4>
+                  <p>Need to transfer something larger than text? 
+                    We have you covered with the same end-to-end encryption and experince but now also supporting files. 
+                    
+                    Note: there is a 5mb limitation for files.</p>
+                </div>
+              </div>
             </div>
-            <div class="card">
-                <h2 class="text-xl font-bold mb-4">Share Easily</h2>
-                <p class="mb-4">Share your secrets with others securely using our shareable links.</p>
-                <i class="fas fa-share-alt text-4xl text-accent-teal"></i>
-            </div>
+          </div>
         </div>
-    </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container has-text-centered">
+        <h2 class="title is-2">Why Choose Us?</h2>
+        <div class="columns is-centered is-multiline mt-5">
+          <div class="column is-4">
+            <div class="box">
+              <span class="icon is-large"><i class="fas fa-lock"></i></span>
+              <h3>Security First</h3>
+              <p>Your secrets are our top priority. We use the latest encryption technologies to keep your data safe.</p>
+            </div>
+          </div>
+          <div class="column is-4">
+            <div class="box">
+              <span class="icon is-large"><i class="fas fa-share-alt"></i></span>
+              <h3>Easy Sharing</h3>
+              <p>Share secrets with anyone you trust with just a few clicks. Our shareable links are easy to use and secure.</p>
+            </div>
+          </div>
+          <div class="column is-4">
+            <div class="box">
+              <span class="icon is-large"><i class="fas fa-user-shield"></i></span>
+              <h3>Privacy Focused</h3>
+              <p>We believe in your right to privacy. We don't track your data or sell it to third parties.</p>
+            </div>
+          </div>
+        </div>
+      </div>
     </section>
     {% endblock main %}

@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-axum = { version = "0.7", features = ["tokio", "macros"] }
+axum = { version = "0.7", features = ["tokio", "macros", "multipart"] }
 axum-server = { version = "0.6", features = ["tls-rustls"] }
 tokio = { version = "1", features = ["full"] }
 tracing = "0.1"
@@ -23,6 +23,7 @@ base64 = "0.22.0"
 validator = { version = "0.17", features = ["derive"] } 
 rusqlite = "0.31.0"
 askama = "0.12.1"
+sha2 = "0.10.8"
 
 
 [dev-dependencies]

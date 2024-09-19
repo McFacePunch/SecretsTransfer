@@ -1,13 +1,26 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{title}}</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <!-- <link rel="stylesheet" href="/static/style.css"> -->
     <link rel="stylesheet" href="/static/all.min.css">
+    <link
+        rel="stylesheet"
+        href="https://cdn.jsdelivr.net/npm/bulma@1.0.0/css/bulma.min.css"
+        >
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw==" crossorigin="anonymous" referrerpolicy="no-referrer" />
     <style>
         .gradient-bg {
             background: linear-gradient(135deg, #1e3a8a, #1e40af); /* Updated to a pleasant dark blue gradient */
         }
         .card {
             @apply bg-cool-blue-300 text-cool-blue-900 p-6 rounded-lg shadow-lg;
+        }
+        .hero {
+          background-image: url('/images/hero.png');
+          background-size: cover;
+          background-position: center;
+        }
+        .card {
+          box-shadow: 0 2px 3px rgba(10, 10, 10, 0.1), 0 0 0 1px rgba(10, 10, 10, 0.1);
         }
     </style>

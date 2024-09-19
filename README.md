@@ -7,18 +7,21 @@
 </table>
  
 
-A secure secrets sharing service written in rust and packaged neatly into a single binary for easy deployment.
+A secure secrets sharing service written in Rust and packaged neatly into a single binary for easy deployment and use. It provides an easy and minimal setup way to share secrets in a reliable and secure way.
 
 
-Currently it is capable of running standalone with no extra infrastructure using an in memory databases or as part of a cluster using Redis/Valkey.
+While being capable of running standalone with no extra infrastructure it can also be deployed as part of a cluster with caching using Redis/Valkey.
 
+Key Features:
+- Easy to setup and run, only needs one binary and a config
+- Pure Rust internals, no unsafe code. 
+- Minimal Javascript
+- API for building custom integrations
+- Secure transfer of secrets
+- All features exposed via CLI (In Progress)
+- Optional Captcha (TODO)
+- HTML templatization for easy customization
+- Open Source and free to use.
 
-
-Tailwind setup:
-
-Install: `npm install -D tailwindcss postcss autoprefixer`
-
-
-Generate tailwind.css: `npx tailwindcss -i ./tailwind.config.js -o ./tailwind.css`
 
 
