@@ -7,6 +7,9 @@
 </table>
  
 
+# Notice! This is still beta, core featuers work but its not very pretty yet.
+
+
 A secure secrets sharing service written in Rust and packaged neatly into a single binary for easy deployment and use. It provides an easy and minimal setup way to share secrets in a reliable and secure way.
 
 
@@ -18,7 +21,7 @@ Key Features:
 - Minimal Javascript
 - API for building custom integrations
 - Secure transfer of secrets
-- All features exposed via CLI (In Progress)
+- All features exposed via CLI (TODO)
 - Optional Captcha (TODO)
 - HTML templatization for easy customization
 - Open Source and free to use.
