@@ -88,6 +88,5 @@ stop:
 
 # Clean up
 clean:
-	-rm ./src/SecretsTransfer
 	-rm -rf ./test/certs/
 	cargo clean
